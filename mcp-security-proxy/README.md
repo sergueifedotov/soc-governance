@@ -95,7 +95,7 @@ front of any MCP server.
 
 Related: [Marifort Gate](https://github.com/marifort/rag-protection) enforces identity-based document
 authorization on AI *retrieval*. This proxy governs AI *actions*. The full SOC stack this proxy was
-extracted from is [soc-governance](https://github.com/marifort/soc-governance) (Phase 2–4, LangGraph
+extracted from is [soc-governance](https://github.com/sergueifedotov/soc-governance) (Phase 2–4, LangGraph
 approval gate, Neo4j/OpenCTI). Same pattern — identity and policy, decision, audit trail — at two
 layers, plus the SIEM workflow around them.
 

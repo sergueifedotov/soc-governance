@@ -36,5 +36,5 @@ fork of the Wazuh MCP Server.
 Related Marifort repositories (original, no upstream MCP server code):
 
 - https://github.com/marifort/rag-protection — identity ACL on AI retrieval
-- https://github.com/marifort/mcp-security-proxy — standalone extract of
+- https://github.com/sergueifedotov/mcp-security-proxy — standalone extract of
   `mcp-security-proxy/` in this tree

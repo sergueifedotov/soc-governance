@@ -69,9 +69,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/marifort/soc-governance"
-Repository = "https://github.com/marifort/soc-governance"
-"Bug Tracker" = "https://github.com/marifort/soc-governance/issues"
+Homepage = "https://github.com/sergueifedotov/soc-governance"
+Repository = "https://github.com/sergueifedotov/soc-governance"
+"Bug Tracker" = "https://github.com/sergueifedotov/soc-governance/issues"
 Upstream = "https://github.com/gensecaihq/Wazuh-MCP-Server"
 
 [tool.setuptools]
