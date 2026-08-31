@@ -1,0 +1,743 @@
+{
+  "uid": "mcp-agent-traffic",
+  "title": "MCP Agent Traffic",
+  "tags": ["wazuh", "mcp", "observability"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "15s",
+  "time": {"from": "now-1h", "to": "now"},
+  "links": [
+    {"title": "MCP Agent Traffic - Live", "url": "/d/mcp-agent-traffic-live/mcp-agent-traffic-live", "type": "link", "icon": "bolt", "tags": []}
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "tool",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+        "query": "label_values(wazuh_mcp_calls_total, tool)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": {"selected": true, "text": "All", "value": "$__all"}
+      },
+      {
+        "name": "method",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+        "query": "label_values(wazuh_mcp_calls_total, method)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": {"selected": true, "text": "All", "value": "$__all"}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Calls / sec (1m)",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "sum(rate(wazuh_mcp_calls_total{method=~\"$method\",tool=~\"$tool\"}[1m]))",
+          "refId": "A"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value"},
+      "fieldConfig": {"defaults": {"unit": "reqps", "decimals": 2}}
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Error rate % (5m)",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "100 * sum(rate(wazuh_mcp_calls_total{status=\"error\",method=~\"$method\",tool=~\"$tool\"}[5m])) / clamp_min(sum(rate(wazuh_mcp_calls_total{method=~\"$method\",tool=~\"$tool\"}[5m])), 1e-9)",
+          "refId": "A"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 1},
+              {"color": "red", "value": 5}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "p95 latency (5m)",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(wazuh_mcp_call_duration_seconds_bucket{method=~\"$method\",tool=~\"$tool\"}[5m])))",
+          "refId": "A"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value"},
+      "fieldConfig": {"defaults": {"unit": "s", "decimals": 3}}
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Total calls (range)",
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "sum(increase(wazuh_mcp_calls_total{method=~\"$method\",tool=~\"$tool\"}[$__range]))",
+          "refId": "A"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value"},
+      "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}}
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Calls / sec by tool (1m)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "sum by (tool) (rate(wazuh_mcp_calls_total{method=~\"$method\",tool=~\"$tool\"}[1m]))",
+          "legendFormat": "{{tool}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"drawStyle": "line", "fillOpacity": 10}}}
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Errors / sec by tool (1m)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "sum by (tool) (rate(wazuh_mcp_calls_total{status=\"error\",method=~\"$method\",tool=~\"$tool\"}[1m]))",
+          "legendFormat": "{{tool}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"drawStyle": "bars", "fillOpacity": 60}}}
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Latency p50 / p95 / p99 (5m)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(wazuh_mcp_call_duration_seconds_bucket{method=~\"$method\",tool=~\"$tool\"}[5m])))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(wazuh_mcp_call_duration_seconds_bucket{method=~\"$method\",tool=~\"$tool\"}[5m])))",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(wazuh_mcp_call_duration_seconds_bucket{method=~\"$method\",tool=~\"$tool\"}[5m])))",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "s", "custom": {"drawStyle": "line", "fillOpacity": 5}}}
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Avg latency by tool (5m)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "sum by (tool) (rate(wazuh_mcp_call_duration_seconds_sum{method=~\"$method\",tool=~\"$tool\"}[5m])) / clamp_min(sum by (tool) (rate(wazuh_mcp_call_duration_seconds_count{method=~\"$method\",tool=~\"$tool\"}[5m])), 1e-9)",
+          "legendFormat": "{{tool}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "s", "custom": {"drawStyle": "line", "fillOpacity": 5}}}
+    },
+    {
+      "id": 30,
+      "type": "table",
+      "title": "Top tools by total calls (range)",
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 20},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "topk(20, sum by (tool, method) (increase(wazuh_mcp_calls_total{method=~\"$method\",tool=~\"$tool\"}[$__range])))",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {"id": "organize", "options": {"excludeByName": {"Time": true}, "renameByName": {"Value": "calls"}}}
+      ]
+    },
+    {
+      "id": 31,
+      "type": "table",
+      "title": "Errors by tool / code (range)",
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 20},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "topk(20, sum by (tool, error_code) (increase(wazuh_mcp_call_errors_total{method=~\"$method\",tool=~\"$tool\"}[$__range])))",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {"id": "organize", "options": {"excludeByName": {"Time": true}, "renameByName": {"Value": "errors"}}}
+      ]
+    },
+    {
+      "id": 40,
+      "type": "row",
+      "title": "§9.6.10.3 LLM Engine Health — Fallback Threshold Monitoring",
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 29}
+    },
+    {
+      "id": 41,
+      "type": "stat",
+      "title": "LLM Fallback Rate % (rolling window)",
+      "description": "Percentage of SOC LLM calls that fell back to the deterministic engine in the configured rolling window. Turns red when the threshold is exceeded.",
+      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 30},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "phase4_llm_fallback_rate_pct",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"]},
+        "colorMode": "background",
+        "graphMode": "area",
+        "orientation": "auto",
+        "text": {}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 5},
+              {"color": "red", "value": 10}
+            ]
+          },
+          "mappings": []
+        }
+      }
+    },
+    {
+      "id": 42,
+      "type": "stat",
+      "title": "Threshold Exceeded",
+      "description": "1 = fallback rate is at or above the configured alert threshold. Threshold and window are set via LLM_FALLBACK_THRESHOLD_PCT / LLM_FALLBACK_WINDOW_SECONDS in the phase4 compose file.",
+      "gridPos": {"h": 5, "w": 4, "x": 6, "y": 30},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "phase4_llm_threshold_exceeded",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"]},
+        "colorMode": "background",
+        "graphMode": "none",
+        "orientation": "auto",
+        "text": {}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 1}
+            ]
+          },
+          "mappings": [
+            {"type": "value", "options": {"0": {"text": "OK", "color": "green", "index": 0}}},
+            {"type": "value", "options": {"1": {"text": "ALERT", "color": "red", "index": 1}}}
+          ]
+        }
+      }
+    },
+    {
+      "id": 43,
+      "type": "stat",
+      "title": "Calls in Window",
+      "description": "Total LLM calls (langchain + fallback) recorded in the rolling window.",
+      "gridPos": {"h": 5, "w": 4, "x": 10, "y": 30},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "phase4_llm_total_calls_in_window",
+          "refId": "A"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none"},
+      "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}}
+    },
+    {
+      "id": 44,
+      "type": "stat",
+      "title": "Threshold / Window Config",
+      "description": "Currently active LLM_FALLBACK_THRESHOLD_PCT (%) and LLM_FALLBACK_WINDOW_SECONDS config values.",
+      "gridPos": {"h": 5, "w": 10, "x": 14, "y": 30},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "phase4_llm_fallback_threshold_pct",
+          "legendFormat": "Threshold %",
+          "refId": "A"
+        },
+        {
+          "expr": "phase4_llm_fallback_window_seconds",
+          "legendFormat": "Window (s)",
+          "refId": "B"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "none", "orientation": "horizontal"},
+      "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}}
+    },
+    {
+      "id": 45,
+      "type": "timeseries",
+      "title": "LLM Fallback Rate % over time",
+      "description": "Rolling-window fallback rate sampled every Prometheus scrape interval (15 s). The dashed red line marks the configured alert threshold.",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 35},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "phase4_llm_fallback_rate_pct",
+          "legendFormat": "Fallback rate %",
+          "refId": "A"
+        },
+        {
+          "expr": "phase4_llm_fallback_threshold_pct",
+          "legendFormat": "Threshold %",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 2},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 10}
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "Threshold %"},
+            "properties": [
+              {"id": "custom.lineStyle", "value": {"dash": [8, 8], "fill": "dash"}},
+              {"id": "custom.fillOpacity", "value": 0},
+              {"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 46,
+      "type": "timeseries",
+      "title": "LangChain vs Fallback calls in window",
+      "description": "Absolute call counts (LangChain = healthy, Fallback = deterministic/context overflow) in the rolling window over time.",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 35},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "phase4_llm_langchain_calls_in_window",
+          "legendFormat": "LangChain (healthy)",
+          "refId": "A"
+        },
+        {
+          "expr": "phase4_llm_fallback_calls_in_window",
+          "legendFormat": "Deterministic fallback",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {"drawStyle": "line", "fillOpacity": 20, "lineWidth": 2}
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "Deterministic fallback"},
+            "properties": [
+              {"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}}
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "LangChain (healthy)"},
+            "properties": [
+              {"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 50,
+      "type": "row",
+      "title": "§9.6.10.4 LLM Verdict Divergence Analysis",
+      "description": "Tracks when the LangChain LLM verdict differs from the deterministic baseline verdict on IOC pivot calls.",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 44},
+      "collapsed": false,
+      "datasource": null,
+      "panels": []
+    },
+    {
+      "id": 51,
+      "type": "stat",
+      "title": "Divergence Rate",
+      "description": "Percentage of LangChain-enabled IOC pivot calls where LLM verdict ≠ deterministic verdict in the rolling window.",
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 45},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "phase4_llm_divergence_rate_pct",
+          "legendFormat": "Divergence %",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 10},
+              {"color": "red", "value": 20}
+            ]
+          },
+          "mappings": []
+        }
+      },
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"}
+    },
+    {
+      "id": 52,
+      "type": "stat",
+      "title": "High Divergence Alert",
+      "description": "1 = divergence rate ≥ threshold (LLM_DIVERGENCE_THRESHOLD_PCT, default 20%). Warrants analyst review per §9.6.10.4.",
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 45},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "phase4_llm_high_divergence",
+          "legendFormat": "High divergence flag",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 1}
+            ]
+          },
+          "mappings": [
+            {"options": {"0": {"text": "OK"}, "1": {"text": "ALERT"}}, "type": "value"}
+          ]
+        }
+      },
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "none"}
+    },
+    {
+      "id": 53,
+      "type": "stat",
+      "title": "Total IOC Calls (LLM on)",
+      "description": "LangChain-enabled IOC pivot calls recorded in the rolling window — the denominator for divergence rate.",
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 45},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "phase4_llm_divergence_total_ioc_calls",
+          "legendFormat": "IOC calls",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{"color": "blue", "value": null}]
+          }
+        }
+      },
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none"}
+    },
+    {
+      "id": 54,
+      "type": "stat",
+      "title": "Diverged / Agreed calls",
+      "description": "Raw count of diverged vs agreed IOC pivot calls in the rolling window.",
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 45},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "phase4_llm_diverged_calls_in_window",
+          "legendFormat": "Diverged",
+          "refId": "A"
+        },
+        {
+          "expr": "phase4_llm_agreed_calls_in_window",
+          "legendFormat": "Agreed",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{"color": "green", "value": null}]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "Diverged"},
+            "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}}]
+          }
+        ]
+      },
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "horizontal", "textMode": "auto", "colorMode": "background", "graphMode": "none"}
+    },
+    {
+      "id": 55,
+      "type": "timeseries",
+      "title": "Divergence Rate Over Time",
+      "description": "Rolling LLM verdict divergence rate with alert threshold line. Sustained divergence > 20% triggers §9.6.10.4 review.",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 49},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "phase4_llm_divergence_rate_pct",
+          "legendFormat": "Divergence rate %",
+          "refId": "A"
+        },
+        {
+          "expr": "phase4_llm_divergence_threshold_pct",
+          "legendFormat": "Alert threshold %",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 2},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 10},
+              {"color": "red", "value": 20}
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "Alert threshold %"},
+            "properties": [
+              {"id": "custom.lineStyle", "value": {"dash": [8, 8], "fill": "dash"}},
+              {"id": "custom.fillOpacity", "value": 0},
+              {"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 56,
+      "type": "timeseries",
+      "title": "Agreed vs Diverged Calls Over Time",
+      "description": "Absolute count of agreed and diverged IOC pivot verdicts in the rolling window. Diverged = LLM ≠ deterministic.",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 49},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "phase4_llm_agreed_calls_in_window",
+          "legendFormat": "Agreed (LLM = deterministic)",
+          "refId": "A"
+        },
+        {
+          "expr": "phase4_llm_diverged_calls_in_window",
+          "legendFormat": "Diverged (LLM ≠ deterministic)",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {"drawStyle": "line", "fillOpacity": 20, "lineWidth": 2}
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "Diverged (LLM ≠ deterministic)"},
+            "properties": [
+              {"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}}
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "Agreed (LLM = deterministic)"},
+            "properties": [
+              {"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 60,
+      "type": "row",
+      "title": "§9.6.10.5 Prompt Injection Suspect Monitoring",
+      "description": "Flags IOC pivot calls where LLM returned verdict=benign despite a high Wazuh alert count — the classic fingerprint of a successful prompt injection.",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 58},
+      "collapsed": false,
+      "datasource": null,
+      "panels": []
+    },
+    {
+      "id": 61,
+      "type": "stat",
+      "title": "Injection Suspect Calls",
+      "description": "Number of LangChain IOC pivot calls in the rolling window where verdict=benign but Wazuh alert count ≥ threshold. Any non-zero value warrants immediate review.",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 59},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "phase4_llm_injection_suspect_calls_in_window",
+          "legendFormat": "Suspect calls",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 1}
+            ]
+          },
+          "mappings": [
+            {"options": {"0": {"text": "CLEAN"}}, "type": "value"}
+          ]
+        }
+      },
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"]},
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 62,
+      "type": "stat",
+      "title": "Alert Count Threshold",
+      "description": "LLM_INJECTION_SUSPECT_ALERT_THRESHOLD — minimum Wazuh alert count that makes a benign verdict suspicious.",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 59},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "phase4_llm_injection_alert_threshold",
+          "legendFormat": "Alert threshold",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{"color": "blue", "value": null}]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"]},
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 63,
+      "type": "timeseries",
+      "title": "Injection Suspect Calls Over Time",
+      "description": "Rolling count of benign+high-alert-count IOC pivot calls. A non-zero sustained value indicates a possible ongoing prompt injection attempt.",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 59},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "phase4_llm_injection_suspect_calls_in_window",
+          "legendFormat": "Suspect calls (benign + high alerts)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {"drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 1}
+            ]
+          },
+          "color": {"mode": "thresholds"}
+        }
+      }
+    }
+  ]
+}

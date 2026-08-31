@@ -1,0 +1,225 @@
+{
+  "uid": "mcp-security-proxy",
+  "title": "MCP Security Proxy",
+  "tags": ["mcp", "security", "proxy"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "time": {"from": "now-1h", "to": "now"},
+  "templating": {
+    "list": [
+      {
+        "name": "tool",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+        "query": "label_values(mcp_security_proxy_calls_total, tool)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": {"selected": true, "text": "All", "value": "$__all"}
+      },
+      {
+        "name": "method",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+        "query": "label_values(mcp_security_proxy_calls_total, method)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": {"selected": true, "text": "All", "value": "$__all"}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Allowed Calls / sec",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "sum(rate(mcp_security_proxy_calls_total{decision=\"allow\",method=~\"$method\",tool=~\"$tool\"}[1m]))",
+          "refId": "A"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value"},
+      "fieldConfig": {"defaults": {"unit": "reqps", "decimals": 2}}
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Denied Calls / sec",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "sum(rate(mcp_security_proxy_calls_total{decision=\"deny\",method=~\"$method\",tool=~\"$tool\"}[1m]))",
+          "refId": "A"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value"},
+      "fieldConfig": {"defaults": {"unit": "reqps", "decimals": 2}}
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Upstream Errors / sec",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "sum(rate(mcp_security_proxy_upstream_errors_total[1m]))",
+          "refId": "A"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value"},
+      "fieldConfig": {"defaults": {"unit": "reqps", "decimals": 2}}
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Denied % (5m)",
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "100 * sum(rate(mcp_security_proxy_calls_total{decision=\"deny\",method=~\"$method\",tool=~\"$tool\"}[5m])) / clamp_min(sum(rate(mcp_security_proxy_calls_total{method=~\"$method\",tool=~\"$tool\"}[5m])), 1e-9)",
+          "refId": "A"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 1},
+              {"color": "red", "value": 5}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Calls by Decision",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "sum by (decision) (rate(mcp_security_proxy_calls_total{method=~\"$method\",tool=~\"$tool\"}[1m]))",
+          "legendFormat": "{{decision}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"drawStyle": "line", "fillOpacity": 12}}}
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Denied Calls by Reason",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(mcp_security_proxy_denied_total{method=~\"$method\",tool=~\"$tool\"}[1m]))",
+          "legendFormat": "{{reason}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"drawStyle": "bars", "fillOpacity": 60}}}
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "p95 Proxy Latency",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(mcp_security_proxy_call_duration_seconds_bucket{method=~\"$method\",tool=~\"$tool\"}[5m])))",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "s", "decimals": 3, "custom": {"drawStyle": "line", "fillOpacity": 5}}}
+    },
+    {
+      "id": 21,
+      "type": "table",
+      "title": "Top Denied Tools (range)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "topk(20, sum by (tool, reason) (increase(mcp_security_proxy_denied_total{method=~\"$method\",tool=~\"$tool\"}[$__range])))",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {"id": "organize", "options": {"excludeByName": {"Time": true}, "renameByName": {"Value": "denied"}}}
+      ]
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "LLM Risk Calls by Decision Hint",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "sum by (decision_hint, outcome) (rate(mcp_security_proxy_llm_risk_calls_total[1m]))",
+          "legendFormat": "{{decision_hint}}/{{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"drawStyle": "line", "fillOpacity": 12}}}
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "LLM Risk Scoring Latency (p95)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(mcp_security_proxy_llm_risk_latency_seconds_bucket[5m])))",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "s", "decimals": 3, "custom": {"drawStyle": "line", "fillOpacity": 8}}}
+    },
+    {
+      "id": 32,
+      "type": "timeseries",
+      "title": "LLM Risk Score (avg)",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 28},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "(sum by (decision_hint) (rate(mcp_security_proxy_llm_risk_value_sum[5m])) / clamp_min(sum by (decision_hint) (rate(mcp_security_proxy_llm_risk_value_count[5m])), 1e-9)) or (sum by (decision_hint) (rate(mcp_security_proxy_llm_risk_score_sum[5m])) / clamp_min(sum by (decision_hint) (rate(mcp_security_proxy_llm_risk_score_count[5m])), 1e-9))",
+          "legendFormat": "{{decision_hint}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 3,
+          "min": 0,
+          "max": 1,
+          "custom": {"drawStyle": "line", "fillOpacity": 10}
+        }
+      }
+    }
+  ]
+}

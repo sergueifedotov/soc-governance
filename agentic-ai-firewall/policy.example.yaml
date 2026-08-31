@@ -1,0 +1,48 @@
+# AgentGuard default policy.
+# Reload with: POST /v1/admin/reload-policy
+
+version: 1
+
+# Input scanner thresholds. Score range 0..1.
+input:
+  # Below challenge: pass through.
+  # challenge..block: sanitize + warn (return cleaned text + warnings).
+  # >= block: refuse — caller must not pass to LLM.
+  challenge_threshold: 0.4
+  block_threshold: 0.8
+  strip_hidden_chars: true
+  strip_html_comments: true
+  redact_pii: true
+  redact_secrets: true
+
+# Output / tool-call gating.
+output:
+  # Per-tool risk thresholds (override the global default below).
+  default:
+    challenge_threshold: 0.5
+    block_threshold: 0.85
+  tools:
+    send_email:
+      challenge_threshold: 0.3
+      block_threshold: 0.7
+      require_approval: true
+    delete_file:
+      challenge_threshold: 0.0   # always challenge
+      block_threshold: 0.5
+      require_approval: true
+    execute_shell:
+      challenge_threshold: 0.0
+      block_threshold: 0.1       # very strict
+      require_approval: true
+    read_file:
+      challenge_threshold: 0.7
+      block_threshold: 0.95
+
+# Allowlist of upstream domains the agent may call.
+network:
+  allowed_domains:
+    - api.openai.com
+    - api.anthropic.com
+    # Add your own:
+    # - your-internal-api.example.com
+  block_private_ranges: true   # block 10.0.0.0/8, 192.168.0.0/16, 169.254.169.254 (cloud metadata)

@@ -1,0 +1,38 @@
+# Isolated executor sidecar for Profile C / mcp-security-proxy Sprint 3.
+# Joins the same external networks as docker-compose.phase4.yml.
+services:
+  isolated-executor:
+    build:
+      context: ../mcp-isolated-executor
+      dockerfile: Dockerfile
+    image: mcp-isolated-executor:local
+    container_name: isolated-executor
+    environment:
+      ISOLATED_EXECUTOR_RUNTIME: hardened-container
+      ISOLATED_EXECUTOR_ALLOW_NETWORK: "false"
+      ISOLATED_EXECUTOR_TIMEOUT_SECONDS: "25"
+    ports:
+      - "${ISOLATED_EXECUTOR_HOST_PORT:-18088}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+    networks:
+      default:
+        aliases:
+          - isolated-executor
+      phase4:
+        aliases:
+          - isolated-executor
+
+networks:
+  default:
+    external: true
+    name: wazuh-soc_default
+  phase4:
+    external: true
+    name: wazuh-soc_phase4

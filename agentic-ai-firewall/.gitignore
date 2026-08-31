@@ -1,0 +1,29 @@
+# Dependencies
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.idea/
+.vscode/
+
+# Env
+.env
+.env.local
+
+# Local policy
+policy.yaml
+
+# OS
+.DS_Store
+Thumbs.db

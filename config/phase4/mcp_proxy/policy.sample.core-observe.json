@@ -1,0 +1,108 @@
+{
+  "allowed_methods": [
+    "initialize",
+    "notifications/initialized",
+    "ping",
+    "tools/list",
+    "tools/call"
+  ],
+  "denied_tools": [
+    "wazuh_block_ip",
+    "wazuh_isolate_host",
+    "wazuh_kill_process",
+    "wazuh_disable_user",
+    "wazuh_quarantine_file",
+    "wazuh_active_response",
+    "wazuh_firewall_drop",
+    "wazuh_host_deny",
+    "wazuh_restart",
+    "wazuh_unisolate_host",
+    "wazuh_enable_user",
+    "wazuh_restore_file",
+    "wazuh_firewall_allow",
+    "wazuh_host_allow"
+  ],
+  "blocked_argument_patterns": [
+    "(?i)\\b(ignore\\s+previous\\s+instructions|system\\s+prompt|tool\\s+override)\\b",
+    "(?i)\\b(drop\\s+table|union\\s+select|insert\\s+into|;\\s*shutdown)\\b",
+    "(?i)(\\.\\./|%2e%2e|\\$\\(|`[^`]+`)",
+    "(?i)\\b(curl|wget|nc|bash\\s+-c|powershell)\\b"
+  ],
+  "blocked_pattern_action": "challenge",
+  "llm_risk": {
+    "enabled": true,
+    "provider": "langchain",
+    "model": "ai/gemma3-qat:latest",
+    "base_url": "http://model-runner.docker.internal/engines/v1",
+    "api_key": "local-demo",
+    "timeout_seconds": 5,
+    "min_monitor_score": 0.45,
+    "min_challenge_score": 0.65,
+    "min_deny_score": 0.75,
+    "enforce": false,
+    "max_argument_chars": 2000,
+    "system_prompt": "You are an MCP security risk classifier. Return only compact JSON with keys: decision_hint, risk_score, labels, rationale. decision_hint must be one of allow, monitor, challenge, deny. risk_score must be 0..1."
+  },
+  "tool_intent": {
+    "enabled": true,
+    "provider": "langchain",
+    "model": "ai/gemma3-qat:latest",
+    "base_url": "http://model-runner.docker.internal/engines/v1",
+    "api_key": "local-demo",
+    "timeout_seconds": 5,
+    "min_monitor_score": 0.25,
+    "min_challenge_score": 0.45,
+    "min_deny_score": 0.7,
+    "enforce": false,
+    "max_argument_chars": 2000,
+    "require_intent_metadata": false,
+    "metadata_intent_keys": [
+      "intent",
+      "declared_intent",
+      "task_intent"
+    ],
+    "system_prompt": "You are an MCP tool-intent verifier. Compare declared intent against selected method/tool/arguments. Return only compact JSON with keys: decision_hint, intent_score, labels, rationale. decision_hint must be one of allow, monitor, challenge, deny. intent_score must be 0..1 where higher means stronger intent mismatch risk."
+  },
+  "max_body_bytes": 262144,
+  "tool_name_regex": "^[a-zA-Z0-9_:-]{1,120}$",
+  "masking_rules": [],
+  "discovery_rules": [],
+  "trusted_servers": [
+    "http://wazuh-mcp-server:3000/mcp",
+    "http://wazuh-mcp-server:3000",
+    "http://host.docker.internal:3000/mcp",
+    "http://localhost:3000/mcp"
+  ],
+  "untrusted_server_action": "monitor",
+  "execution_tool_profile": {
+    "enabled": true,
+    "action": "monitor",
+    "patterns": [
+      "shell",
+      "exec"
+    ]
+  },
+  "commercial": {
+    "tier": "trial",
+    "license_key": "",
+    "limits": {
+      "max_mcp_calls_per_day": 5000,
+      "max_llm_risk_calls_per_day": 2500,
+      "max_tool_intent_calls_per_day": 2500,
+      "max_denied_events_retained": 2000
+    },
+    "features": {
+      "llm_risk": true,
+      "tool_intent": true,
+      "discovery_advanced": false,
+      "policy_bundles": false,
+      "webhook_export": false
+    },
+    "webhook": {
+      "enabled": false,
+      "url": "",
+      "on_deny": true,
+      "timeout_seconds": 5
+    }
+  }
+}

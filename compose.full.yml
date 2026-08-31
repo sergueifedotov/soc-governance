@@ -1,0 +1,547 @@
+# Wazuh MCP Server — Full Stack (Wazuh SIEM + MCP Server + LLM + Chat UI)
+#
+# Runs the entire SOC stack in one command:
+#   docker compose -f compose.full.yml up -d
+#
+# Prerequisites:
+#   - Docker Desktop 4.40+ (macOS) or Docker Desktop 4.41+ (Windows/Linux)
+#     with Docker Model Runner enabled (Settings → AI → Enable Docker Model Runner)
+#   - Docker Compose v2.38+
+#   - Linux hosts only: sudo sysctl -w vm.max_map_count=262144
+#     (required by Wazuh Indexer; Docker Desktop on Mac/Windows sets this automatically)
+#
+# After startup (allow ~2 min for Wazuh Indexer to initialise on first run):
+#   Open WebUI:         http://localhost:3100     (first run creates admin account)
+#   Wazuh Dashboard:    https://localhost:8443    (admin / SecretPassword)
+#   Wazuh MCP API:      http://localhost:3000/mcp
+#   Health check:       http://localhost:3000/health
+#
+# Connect MCP to Open WebUI (one-time setup):
+#   Admin Settings → Tools → Add MCP Server
+#   URL:   http://wazuh-mcp-server:3000/mcp
+#   Token: run `docker compose -f compose.full.yml logs wazuh-mcp-server | grep "API key"`
+#
+# SECURITY: Change these Wazuh upstream defaults before exposing to any network:
+#   Wazuh Dashboard / Indexer:  admin          / SecretPassword
+#   Wazuh API (wazuh-wui):      wazuh-wui      / MyS3cr37P450r.*-
+#   Wazuh Dashboard server:     kibanaserver   / kibanaserver
+
+x-open-webui-tool-servers: &open_webui_tool_servers >-
+  [{"type":"mcp","url":"http://wazuh-mcp-server:3000/mcp","path":"","auth_type":"bearer","key":"${MCP_API_KEY:-wazuh_local_demo_change_me}","info":{"id":"wazuh-mcp","name":"Wazuh MCP Server","description":"Wazuh SIEM tools exposed over MCP."},"config":{"enable":true}}]
+
+name: wazuh-soc
+
+# =============================================================================
+# AI Model — provisioned by Docker Model Runner (not a container)
+# DMR pulls the configured model from Docker Hub on first run and serves it via
+# the OpenAI-compatible API at http://model-runner.docker.internal/engines/v1
+# Suggested MODEL_RUNNER_MODEL presets:
+#   Ultra-low-RAM:  MODEL_RUNNER_MODEL=ai/gemma3-qat
+#   Balanced Qwen:  MODEL_RUNNER_MODEL=ai/qwen3
+#   Larger Qwen:    MODEL_RUNNER_MODEL=docker.io/ai/qwen3:14B-Q6_K
+# =============================================================================
+models:
+  llm:
+    model: ${MODEL_RUNNER_MODEL:-ai/gemma3-qat}
+    context_size: 2048
+
+# =============================================================================
+# Services
+# =============================================================================
+services:
+
+  # ---------------------------------------------------------------------------
+  # Wazuh MCP Server
+  # Exposes 48 Wazuh security tools over the MCP Streamable HTTP protocol.
+  # ---------------------------------------------------------------------------
+  wazuh-mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUILD_DATE: ${BUILD_DATE}
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.13}
+        VERSION: ${VERSION:-4.2.1}
+      target: production
+    image: wazuh-mcp-server:4.2.1
+    pull_policy: build
+    container_name: wazuh-mcp-server
+    hostname: wazuh-mcp-server
+    restart: unless-stopped
+    init: true
+
+    env_file:
+      - .env
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 3000
+      ENVIRONMENT: production
+      TZ: ${TZ:-UTC}
+      AUTH_MODE: ${AUTH_MODE:-bearer}
+      MCP_API_KEY: ${MCP_API_KEY:-wazuh_local_demo_change_me}
+      # Internal Wazuh endpoints — override any values from .env
+      WAZUH_HOST: wazuh.manager
+      WAZUH_PORT: "55000"
+      WAZUH_USER: wazuh-wui
+      WAZUH_PASS: "MyS3cr37P450r.*-"
+      WAZUH_VERIFY_SSL: "false"
+      WAZUH_INDEXER_HOST: wazuh.indexer
+      WAZUH_INDEXER_PORT: "9200"
+      WAZUH_INDEXER_USER: admin
+      WAZUH_INDEXER_PASS: SecretPassword
+      WAZUH_INDEXER_VERIFY_SSL: "false"
+      # Phase 4 — OpenCTI + Neo4j read tools (internal Docker hostnames)
+      OPENCTI_URL: ${OPENCTI_URL:-http://opencti-platform:4000}
+      OPENCTI_API_TOKEN: ${OPENCTI_ADMIN_TOKEN:-}
+      NEO4J_HTTP_URL: http://phase4-neo4j:7474
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-phase4_admin}
+
+    depends_on:
+      wazuh.manager:
+        condition: service_healthy
+
+    ports:
+      - "${MCP_PORT:-3000}:3000"
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf --max-time 5 http://localhost:3000/health | jq -e '.status == \"healthy\"' > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=64m
+      - /app/logs:noexec,nosuid,size=128m
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=wazuh-mcp-server"
+
+    labels:
+      - "org.opencontainers.image.title=Wazuh MCP Server"
+      - "monitoring.prometheus.scrape=true"
+      - "monitoring.prometheus.port=3000"
+      - "monitoring.prometheus.path=/metrics"
+
+  # ---------------------------------------------------------------------------
+  # Wazuh Certificate Generator (one-shot init)
+  # Generates self-signed TLS certificates for all Wazuh components and exits.
+  # All other Wazuh services wait for this to complete successfully.
+  # Certs are persisted in ./config/wazuh_indexer_ssl_certs/ on the host.
+  # ---------------------------------------------------------------------------
+  wazuh-certs-generator:
+    image: alpine:3.21
+    restart: "no"
+    volumes:
+      - ./config/wazuh_indexer_ssl_certs/:/certificates/
+      - ./config/generate-certs.sh:/generate-certs.sh:ro
+    command: sh /generate-certs.sh
+
+  # ---------------------------------------------------------------------------
+  # Wazuh Indexer (OpenSearch)
+  # Stores and indexes all security events and vulnerability data.
+  # The MCP server's alert-search and vulnerability tools query this service.
+  # Minimum RAM: 2 GB dedicated to the JVM heap (-Xms1g -Xmx1g below).
+  # ---------------------------------------------------------------------------
+  wazuh.indexer:
+    image: wazuh/wazuh-indexer:4.8.0
+    platform: linux/amd64
+    hostname: wazuh.indexer
+    restart: unless-stopped
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    environment:
+      OPENSEARCH_JAVA_OPTS: "-Xms1g -Xmx1g"
+      TZ: ${TZ:-UTC}
+    volumes:
+      - wazuh-indexer-data:/var/lib/wazuh-indexer
+      - ./config/wazuh_indexer/wazuh.indexer.yml:/usr/share/wazuh-indexer/opensearch.yml
+      - ./config/wazuh_indexer/internal_users.yml:/usr/share/wazuh-indexer/opensearch-security/internal_users.yml
+      - ./config/wazuh_indexer_ssl_certs/root-ca.pem:/usr/share/wazuh-indexer/certs/root-ca.pem
+      - ./config/wazuh_indexer_ssl_certs/wazuh.indexer-key.pem:/usr/share/wazuh-indexer/certs/wazuh.indexer.key
+      - ./config/wazuh_indexer_ssl_certs/wazuh.indexer.pem:/usr/share/wazuh-indexer/certs/wazuh.indexer.pem
+      - ./config/wazuh_indexer_ssl_certs/admin.pem:/usr/share/wazuh-indexer/certs/admin.pem
+      - ./config/wazuh_indexer_ssl_certs/admin-key.pem:/usr/share/wazuh-indexer/certs/admin-key.pem
+    depends_on:
+      wazuh-certs-generator:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -ks https://127.0.0.1:9200/ -o /dev/null -w '%{http_code}' | grep -qE '(200|401)'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+        labels: "service=wazuh-indexer"
+
+  # ---------------------------------------------------------------------------
+  # Wazuh Manager
+  # Analyses events, applies detection rules, manages agents.
+  # Exposes the REST API on port 55000 (consumed by the MCP server).
+  # Agent ports: 1514 (communications), 1515 (enrollment), 514/udp (syslog).
+  # ---------------------------------------------------------------------------
+  wazuh.manager:
+    image: wazuh/wazuh-manager:4.8.0
+    platform: linux/amd64
+    hostname: wazuh.manager
+    restart: unless-stopped
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 655360
+        hard: 655360
+    ports:
+      - "1514:1514"       # Agent communications (TCP)
+      - "1515:1515"       # Agent enrollment
+      - "55000:55000"     # REST API
+    environment:
+      TZ: ${TZ:-UTC}
+      INDEXER_URL: https://wazuh.indexer:9200
+      INDEXER_USERNAME: admin
+      INDEXER_PASSWORD: SecretPassword
+      FILEBEAT_SSL_VERIFICATION_MODE: full
+      SSL_CERTIFICATE_AUTHORITIES: /etc/ssl/root-ca.pem
+      SSL_CERTIFICATE: /etc/ssl/filebeat.pem
+      SSL_KEY: /etc/ssl/filebeat.key
+      API_USERNAME: wazuh-wui
+      API_PASSWORD: "MyS3cr37P450r.*-"
+    volumes:
+      - wazuh_api_configuration:/var/ossec/api/configuration
+      - wazuh_etc:/var/ossec/etc
+      - wazuh_logs:/var/ossec/logs
+      - wazuh_queue:/var/ossec/queue
+      - wazuh_var_multigroups:/var/ossec/var/multigroups
+      - wazuh_integrations:/var/ossec/integrations
+      - wazuh_active_response:/var/ossec/active-response/bin
+      - wazuh_agentless:/var/ossec/agentless
+      - wazuh_wodles:/var/ossec/wodles
+      - filebeat_etc:/etc/filebeat
+      - filebeat_var:/var/lib/filebeat
+      - ./config/wazuh_indexer_ssl_certs/root-ca-manager.pem:/etc/ssl/root-ca.pem
+      - ./config/wazuh_indexer_ssl_certs/wazuh.manager.pem:/etc/ssl/filebeat.pem
+      - ./config/wazuh_indexer_ssl_certs/wazuh.manager-key.pem:/etc/ssl/filebeat.key
+      - ./config/wazuh_cluster/wazuh_manager.conf:/wazuh-config-mount/etc/ossec.conf
+    depends_on:
+      wazuh-certs-generator:
+        condition: service_completed_successfully
+      wazuh.indexer:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -ks https://127.0.0.1:55000/ -o /dev/null -w '%{http_code}' | grep -qE '(200|401)'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+        labels: "service=wazuh-manager"
+
+  # ---------------------------------------------------------------------------
+  # Apache Log Generator (synthetic test traffic with attack patterns)
+  # Continuously writes Apache access-style lines to a shared Wazuh log file
+  # so MCP alert and log-search tools have data to query in demo/lab setups.
+  #
+  # Attack Patterns Generated:
+  #   - sqlmap: SQL injection attempts with various payloads and user agents
+  #   - nikto: Web vulnerability scanner requests and fingerprinting
+  #   - wp-login.php: WordPress login page brute-force and attacks
+  #   - phpmyadmin: Database interface enumeration attempts
+  #   - normal traffic: Baseline legitimate requests for context
+  # ---------------------------------------------------------------------------
+  apache-log-generator:
+    image: alpine:3.21
+    container_name: apache-log-generator
+    restart: unless-stopped
+    depends_on:
+      wazuh.manager:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-UTC}
+      APACHE_LOG_GENERATOR_INTERVAL_SECONDS: ${APACHE_LOG_GENERATOR_INTERVAL_SECONDS:-3}
+    volumes:
+      - wazuh_logs:/var/ossec/logs
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        log_file=/var/ossec/logs/apache_access.log
+        touch "$$log_file"
+        echo "[apache-log-generator] writing synthetic Apache logs with attack patterns (sqlmap, nikto, wp-login.php) to $$log_file"
+
+        # Attack source IPs
+        sqlmap_ip="198.51.100.27"
+        nikto_ip="198.51.100.28"
+        wordpress_attack_ip="192.0.2.99"
+        legitimate_ip="203.0.113.44"
+
+        # Counter for log rotation check
+        check_interval=0
+
+        while true; do
+          ts="$$(date -u '+%d/%b/%Y:%H:%M:%S +0000')"
+          
+          # SQL Injection attempts (sqlmap)
+          printf '%s\n' "$$sqlmap_ip - - [$$ts] \"GET /index.php?id=1' UNION SELECT NULL,NULL,NULL-- HTTP/1.1\" 200 1243 \"-\" \"sqlmap/1.8.20201219.2\"" >> "$$log_file"
+          printf '%s\n' "$$sqlmap_ip - - [$$ts] \"GET /search.php?q=admin' OR '1'='1 HTTP/1.1\" 200 856 \"-\" \"sqlmap/1.8.20201219.2\"" >> "$$log_file"
+          printf '%s\n' "$$sqlmap_ip - - [$$ts] \"POST /api/login HTTP/1.1\" 401 348 \"https://target.local/api/login\" \"sqlmap/1.8.20201219.2\"" >> "$$log_file"
+          printf '%s\n' "$$sqlmap_ip - - [$$ts] \"GET /product.php?id=-1 UNION ALL SELECT database(),version(),user()-- HTTP/1.1\" 403 512 \"-\" \"sqlmap/1.8.20201219.2\"" >> "$$log_file"
+
+          # Web vulnerability scanning (nikto)
+          printf '%s\n' "$$nikto_ip - - [$$ts] \"GET / HTTP/1.1\" 200 3452 \"-\" \"nikto/2.5.0\"" >> "$$log_file"
+          printf '%s\n' "$$nikto_ip - - [$$ts] \"GET /admin/ HTTP/1.1\" 301 185 \"-\" \"nikto/2.5.0\"" >> "$$log_file"
+          printf '%s\n' "$$nikto_ip - - [$$ts] \"GET /administrator/ HTTP/1.1\" 301 185 \"-\" \"nikto/2.5.0\"" >> "$$log_file"
+          printf '%s\n' "$$nikto_ip - - [$$ts] \"GET /phpmyadmin/index.php HTTP/1.1\" 404 512 \"-\" \"nikto/2.5.0\"" >> "$$log_file"
+          printf '%s\n' "$$nikto_ip - - [$$ts] \"HEAD /server-status HTTP/1.1\" 403 0 \"-\" \"nikto/2.5.0\"" >> "$$log_file"
+          printf '%s\n' "$$nikto_ip - - [$$ts] \"OPTIONS / HTTP/1.1\" 200 126 \"-\" \"nikto/2.5.0\"" >> "$$log_file"
+
+          # WordPress login attacks
+          printf '%s\n' "$$wordpress_attack_ip - - [$$ts] \"POST /wp-login.php HTTP/1.1\" 200 2341 \"https://target.local/wp-login.php\" \"Mozilla/5.0 (compatible; WordPress Password Reset)\"" >> "$$log_file"
+          printf '%s\n' "$$wordpress_attack_ip - - [$$ts] \"GET /wp-login.php?action=lostpassword HTTP/1.1\" 200 2148 \"-\" \"Mozilla/5.0 (X11; Linux x86_64)\"" >> "$$log_file"
+          printf '%s\n' "$$wordpress_attack_ip - - [$$ts] \"POST /wp-login.php HTTP/1.1\" 403 512 \"https://target.local/wp-login.php\" \"curl/8.7.1\"" >> "$$log_file"
+          printf '%s\n' "$$wordpress_attack_ip - - [$$ts] \"GET /wp-admin/admin-ajax.php?action=heartbeat HTTP/1.1\" 200 321 \"-\" \"Mozilla/5.0\"" >> "$$log_file"
+          printf '%s\n' "$$wordpress_attack_ip - - [$$ts] \"GET /wp-json/wp/v2/users HTTP/1.1\" 404 256 \"-\" \"python-requests/2.31.0\"" >> "$$log_file"
+
+          # Legitimate baseline traffic
+          printf '%s\n' "$$legitimate_ip - - [$$ts] \"GET /index.php HTTP/1.1\" 200 1243 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64)\"" >> "$$log_file"
+          printf '%s\n' "$$legitimate_ip - - [$$ts] \"GET /css/style.css HTTP/1.1\" 200 5432 \"https://target.local/index.php\" \"Mozilla/5.0\"" >> "$$log_file"
+
+          # Periodic log rotation to keep file manageable
+          check_interval=$$((check_interval + 1))
+          if [ $$check_interval -ge 100 ]; then
+            file_size=$$(wc -c < "$$log_file")
+            if [ $$file_size -gt 5242880 ]; then
+              tail -n 3000 "$$log_file" > "$$log_file.tmp" && mv "$$log_file.tmp" "$$log_file"
+              echo "[apache-log-generator] rotated log file (size was $$file_size bytes)"
+            fi
+            check_interval=0
+          fi
+
+          sleep "$$APACHE_LOG_GENERATOR_INTERVAL_SECONDS"
+        done
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=apache-log-generator"
+
+  # ---------------------------------------------------------------------------
+  # Wazuh Dashboard
+  # Web UI for monitoring, searching, and managing your Wazuh deployment.
+  # Default credentials: admin / SecretPassword  (change before going live)
+  # ---------------------------------------------------------------------------
+  wazuh.dashboard:
+    image: wazuh/wazuh-dashboard:4.8.0
+    platform: linux/amd64
+    hostname: wazuh.dashboard
+    restart: unless-stopped
+    ports:
+      - "${WAZUH_DASHBOARD_PORT:-8443}:5601"
+    environment:
+      TZ: ${TZ:-UTC}
+      INDEXER_USERNAME: admin
+      INDEXER_PASSWORD: SecretPassword
+      WAZUH_API_URL: https://wazuh.manager
+      DASHBOARD_USERNAME: kibanaserver
+      DASHBOARD_PASSWORD: kibanaserver
+      API_USERNAME: wazuh-wui
+      API_PASSWORD: "MyS3cr37P450r.*-"
+    volumes:
+      - ./config/wazuh_indexer_ssl_certs/wazuh.dashboard.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem
+      - ./config/wazuh_indexer_ssl_certs/wazuh.dashboard-key.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem
+      - ./config/wazuh_indexer_ssl_certs/root-ca.pem:/usr/share/wazuh-dashboard/certs/root-ca.pem
+      - ./config/wazuh_dashboard/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml
+      - ./config/wazuh_dashboard/wazuh.yml:/usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml
+      - wazuh-dashboard-config:/usr/share/wazuh-dashboard/data/wazuh/config
+      - wazuh-dashboard-custom:/usr/share/wazuh-dashboard/plugins/wazuh/public/assets/custom
+    depends_on:
+      wazuh.indexer:
+        condition: service_healthy
+      wazuh.manager:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+        labels: "service=wazuh-dashboard"
+
+  # ---------------------------------------------------------------------------
+  # Wazuh Agent 003 (Phase 3 smoke-test endpoint)
+  # Registers a dedicated non-manager agent for guarded write workflow tests.
+  # Built from official Wazuh 4.x packages and pinned to agent 4.8.0.
+  # ---------------------------------------------------------------------------
+  wazuh-agent-003:
+    build:
+      context: ./services/wazuh_agent_4_8
+      dockerfile: Dockerfile
+    image: wazuh-agent-4-8:0.1.0
+    pull_policy: build
+    platform: linux/amd64
+    container_name: wazuh-agent-003
+    hostname: wazuh-agent-003
+    restart: unless-stopped
+    environment:
+      WAZUH_MANAGER_SERVER: wazuh.manager
+      WAZUH_REGISTRATION_SERVER: wazuh.manager
+      WAZUH_AGENT_NAME: "agent003"
+      TZ: ${TZ:-UTC}
+    volumes:
+      - wazuh-agent-003-data:/var/ossec
+    depends_on:
+      wazuh.manager:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=wazuh-agent-003"
+
+  # ---------------------------------------------------------------------------
+  # AgentGuard (local LLM reverse proxy and guardrails for Phase 2)
+  # Routes Phase 2 OpenAI-compatible calls through input/output scanning.
+  # ---------------------------------------------------------------------------
+  agentguard:
+    build: ./agentic-ai-firewall
+    container_name: agentguard
+    restart: unless-stopped
+    ports:
+      - "8088:8088"
+    models:
+      llm:
+        endpoint_var: AGENTGUARD_OPENAI_UPSTREAM
+        model_var: AGENTGUARD_DEFAULT_MODEL
+    environment:
+      AGENTGUARD_POLICY_FILE: /app/policy.yaml
+    volumes:
+      - ./agentic-ai-firewall/policy.example.yaml:/app/policy.yaml:ro
+
+  # ---------------------------------------------------------------------------
+  # Open WebUI Persistent Config Bootstrap
+  # Patches existing Open WebUI data volumes so the Wazuh MCP server stays
+  # pre-registered even when the config is already persisted in webui.db.
+  # ---------------------------------------------------------------------------
+  open-webui-config-init:
+    image: python:3.13-alpine
+    restart: "no"
+    volumes:
+      - open-webui-data:/data
+      - ./config/bootstrap-open-webui.py:/bootstrap-open-webui.py:ro
+    environment:
+      TOOL_SERVER_CONNECTIONS: *open_webui_tool_servers
+    command: ["python", "/bootstrap-open-webui.py"]
+
+  # ---------------------------------------------------------------------------
+  # Open WebUI
+  # Chat interface for your whole team. Connects to the LLM via Docker Model
+  # Runner (endpoint URL injected automatically by Compose) and to the Wazuh
+  # MCP server as a preconfigured tool server.
+  #
+  # OPENAI_API_BASE_URL is injected by Compose from the `llm` model binding.
+  # ---------------------------------------------------------------------------
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+
+    ports:
+      - "${WEBUI_PORT:-3100}:8080"
+
+    # Bind the `llm` model: Compose injects OPENAI_API_BASE_URL pointing to DMR
+    models:
+      llm:
+        endpoint_var: OPENAI_API_BASE_URL
+        model_var: DEFAULT_MODELS
+
+    environment:
+      # DMR does not require an API key
+      OPENAI_API_KEY: "not-needed"
+      TZ: ${TZ:-UTC}
+      # Disable Ollama since we use DMR
+      ENABLE_OLLAMA_API: "false"
+      OLLAMA_BASE_URL: ""
+      # WebUI security — override in .env for production
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:-changeme-replace-with-openssl-rand-hex-32}
+      # Preload the Wazuh MCP server for first-run Open WebUI databases.
+      TOOL_SERVER_CONNECTIONS: *open_webui_tool_servers
+
+    volumes:
+      - open-webui-data:/app/backend/data
+
+    depends_on:
+      wazuh-mcp-server:
+        condition: service_healthy
+      open-webui-config-init:
+        condition: service_completed_successfully
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=open-webui"
+
+    labels:
+      - "org.opencontainers.image.title=Open WebUI (Wazuh SOC)"
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  # Wazuh Manager
+  wazuh_api_configuration:
+  wazuh_etc:
+  wazuh_logs:
+  wazuh_queue:
+  wazuh_var_multigroups:
+  wazuh_integrations:
+  wazuh_active_response:
+  wazuh_agentless:
+  wazuh_wodles:
+  filebeat_etc:
+  filebeat_var:
+  # Wazuh Indexer
+  wazuh-indexer-data:
+  # Wazuh Dashboard
+  wazuh-dashboard-config:
+  wazuh-dashboard-custom:
+  # Wazuh Agent 003
+  wazuh-agent-003-data:
+  # Open WebUI
+  open-webui-data:
+    driver: local

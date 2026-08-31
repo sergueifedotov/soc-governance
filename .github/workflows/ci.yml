@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  proxy-tests:
+    name: MCP security proxy tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install proxy deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r mcp-security-proxy/requirements.txt -r mcp-security-proxy/requirements-dev.txt
+      - name: Test proxy
+        working-directory: mcp-security-proxy
+        run: pytest -q
+
+  syntax:
+    name: Syntax (original packages)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: py_compile original trees
+        run: |
+          python -m py_compile mcp-security-proxy/mcp_security_proxy/*.py
+          python -m py_compile services/phase3_langgraph/app/*.py
+          python -m py_compile mcp-isolated-executor/isolated_executor/*.py
+          python -c "import compileall,sys; sys.exit(0 if compileall.compile_dir('src/wazuh_mcp_server/phase4', quiet=1) else 1)"
+          python -c "import compileall,sys; sys.exit(0 if compileall.compile_dir('src/wazuh_mcp_server/mcp', quiet=1) else 1)"

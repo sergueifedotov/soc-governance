@@ -1,0 +1,276 @@
+# FastMCP Tools API Reference
+
+Complete reference for all 51 tools available in Wazuh MCP Server v4.2.1.
+
+## 🛠️ Tool Categories
+
+### 🚨 [Alert Management](alerts.md) (4 tools)
+Query and analyze security alerts from Wazuh with advanced filtering and pattern analysis.
+
+- **get_wazuh_alerts** - Retrieve security alerts with filtering options
+- **get_wazuh_alert_summary** - Alert summaries grouped by criteria
+- **analyze_alert_patterns** - Pattern analysis for trend identification
+- **search_security_events** - Advanced security event search
+
+### 🖥️ [Agent Management](agents.md) (6 tools)
+Monitor and manage Wazuh agents across your infrastructure.
+
+- **get_wazuh_agents** - Agent information and status
+- **get_wazuh_running_agents** - Active agents only
+- **check_agent_health** - Agent health validation
+- **get_agent_processes** - Running processes per agent
+- **get_agent_ports** - Open ports per agent
+- **get_agent_configuration** - Agent configuration details
+
+### 🛡️ [Vulnerability Management](vulnerabilities.md) (3 tools)
+Identify and analyze security vulnerabilities across your environment.
+
+- **get_wazuh_vulnerabilities** - Comprehensive vulnerability data
+- **get_wazuh_critical_vulnerabilities** - Critical vulnerabilities only
+- **get_wazuh_vulnerability_summary** - Vulnerability statistics and trends
+
+### 🔍 [Security Analysis](security-analysis.md) (7 tools)
+AI-powered security analysis and threat intelligence capabilities.
+
+- **search_security_events** - Advanced security event search with query filtering
+- **analyze_security_threat** - AI-powered threat analysis
+- **check_ioc_reputation** - IoC reputation checking
+- **perform_risk_assessment** - Comprehensive risk analysis
+- **get_top_security_threats** - Top threats by severity
+- **generate_security_report** - Automated security reporting
+- **run_compliance_check** - Compliance framework validation
+
+### 📊 [System Monitoring](system-monitoring.md) (10 tools)
+Monitor system health, performance, and operational metrics.
+
+- **get_wazuh_statistics** - Comprehensive system statistics
+- **get_wazuh_weekly_stats** - Weekly trend analysis
+- **get_wazuh_cluster_health** - Cluster health monitoring
+- **get_wazuh_cluster_nodes** - Cluster node information
+- **get_wazuh_rules_summary** - Rule effectiveness metrics
+- **get_wazuh_remoted_stats** - Agent communication statistics
+- **get_wazuh_log_collector_stats** - Log collector metrics
+- **search_wazuh_manager_logs** - Manager log search
+- **get_wazuh_manager_error_logs** - Error log retrieval
+- **validate_wazuh_connection** - Connection validation
+
+### 🧭 SOC Orchestration (3 tools)
+Read-only analyst acceleration workflows built on top of the core Wazuh tools.
+
+- **triage_wazuh_alerts** - Summarize recent high-severity alerts into priorities, top rules, and hot agents
+- **enrich_wazuh_context** - Add related alert, vulnerability, agent, and indicator context to an investigation pivot
+- **generate_soc_handoff_report** - Assemble a shift or daily handoff report from health, threat, and vulnerability data
+
+These tools now use a LangChain-backed synthesis layer when `PHASE2_LLM_ENABLED=true` and a local OpenAI-compatible model endpoint is configured. If the Phase 2 LLM settings are not configured, they fall back to deterministic summaries while preserving the same structured data output.
+
+LangChain sample (`triage_wazuh_alerts`):
+
+```bash
+MCP_KEY=$(grep '^MCP_API_KEY=' .env | cut -d= -f2-)
+
+curl -sS http://localhost:3000/ \
+  -H "Authorization: Bearer $MCP_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":"phase2-triage","method":"tools/call","params":{"name":"triage_wazuh_alerts","arguments":{"time_range":"24h","min_level":10,"limit":20,"include_agent_health":true}}}' \
+  | python3 -m json.tool
+```
+
+In a successful LangChain response, the returned data block includes:
+
+- `analysis` with analyst-facing summary text
+- `orchestration.engine = "langchain"`
+- `orchestration.status = "LangChain synthesis enabled"`
+
+### ⚡ Active Response (9 tools)
+Execute active response actions on Wazuh agents.
+
+- **wazuh_block_ip** - Block IP address via active response
+- **wazuh_isolate_host** - Isolate a host from the network
+- **wazuh_kill_process** - Kill a running process on an agent
+- **wazuh_disable_user** - Disable a user account
+- **wazuh_quarantine_file** - Quarantine a suspicious file
+- **wazuh_active_response** - Send custom active response command
+- **wazuh_firewall_drop** - Add firewall drop rule
+- **wazuh_host_deny** - Add host deny rule
+- **wazuh_restart** - Restart Wazuh agent
+
+### ✅ Verification (5 tools)
+Verify the status of active response actions.
+
+- **wazuh_check_blocked_ip** - Verify IP is blocked
+- **wazuh_check_agent_isolation** - Verify agent isolation status
+- **wazuh_check_process** - Check if process is running
+- **wazuh_check_user_status** - Check user account status
+- **wazuh_check_file_quarantine** - Check file quarantine status
+
+### ↩️ Rollback (5 tools)
+Reverse active response actions.
+
+- **wazuh_unisolate_host** - Remove host isolation
+- **wazuh_enable_user** - Re-enable a disabled user
+- **wazuh_restore_file** - Restore a quarantined file
+- **wazuh_firewall_allow** - Remove firewall drop rule
+- **wazuh_host_allow** - Remove host deny rule
+
+## 🎯 Quick Examples
+
+### Basic Usage
+```
+Ask Claude: "Show me the latest security alerts"
+Uses: get_wazuh_alerts
+
+Ask Claude: "What are my active agents?"
+Uses: get_wazuh_running_agents
+
+Ask Claude: "Check for critical vulnerabilities"
+Uses: get_wazuh_critical_vulnerabilities
+
+Ask Claude: "Triage the last 24 hours of Wazuh alerts at level 10 or above"
+Uses: triage_wazuh_alerts
+```
+
+### Advanced Queries
+```
+Ask Claude: "Analyze threat patterns from the last 24 hours"
+Uses: analyze_alert_patterns + analyze_security_threat
+
+Ask Claude: "Generate a security report for compliance"
+Uses: generate_security_report + run_compliance_check
+
+Ask Claude: "Check system health and performance"
+Uses: validate_wazuh_connection + get_wazuh_cluster_health
+
+Ask Claude: "Generate a SOC handoff report for the last 12 hours"
+Uses: generate_soc_handoff_report
+```
+
+## 📝 Tool Usage Patterns
+
+### Parameter Validation
+All tools use Pydantic v2 models for parameter validation:
+
+```python
+class AlertQuery(BaseModel):
+    limit: int = Field(default=100, ge=1, le=1000)
+    rule_id: Optional[str] = None
+    level: Optional[str] = None
+    agent_id: Optional[str] = None
+    timestamp_start: Optional[str] = None
+    timestamp_end: Optional[str] = None
+```
+
+### Response Format
+All tools return JSON responses with consistent structure:
+
+```json
+{
+  "data": [...],
+  "total": 150,
+  "pagination": {
+    "limit": 100,
+    "offset": 0,
+    "pages": 2
+  },
+  "metadata": {
+    "query_time": "2024-01-01T12:00:00Z",
+    "api_source": "wazuh_server",
+    "version": "4.2.0"
+  }
+}
+```
+
+### Error Handling
+Consistent error responses across all tools:
+
+```json
+{
+  "error": "Connection timeout to Wazuh server",
+  "error_code": "CONNECTION_TIMEOUT",
+  "timestamp": "2024-01-01T12:00:00Z"
+}
+```
+
+## 🔄 API Integration
+
+### Intelligent API Routing
+Tools automatically choose the optimal API based on:
+
+- **Wazuh Server API**: For agent management, rules, configuration
+- **Wazuh Indexer API**: For alerts, vulnerabilities, event search
+
+```python
+# Automatic API selection
+if indexer_available and use_indexer_for_alerts:
+    return await indexer_client.search_alerts(query)
+else:
+    return await server_client.get_alerts(query)
+```
+
+### Fallback Mechanisms
+- **Server API fails** → Auto-retry with Indexer API
+- **Indexer API fails** → Auto-retry with Server API
+- **Both fail** → Return structured error response
+
+## 🎨 Tool Development
+
+### Adding New Tools
+See [Development Guide](../development/api.md) for creating custom FastMCP tools.
+
+### Tool Categories
+Tools are organized by functionality:
+- **Data Retrieval**: Get information from Wazuh
+- **Analysis**: Process and analyze data
+- **Health**: Monitor system status
+- **Utilities**: Helper and validation tools
+
+## 📊 Performance Considerations
+
+### Rate Limiting
+- Default: 1000 requests/minute per tool
+- Burst: 100 requests allowed
+- Configurable via environment variables
+
+### Caching
+- Query results cached for 5 minutes (configurable)
+- Cache invalidated on configuration changes
+- Disabled for real-time queries
+
+### Pagination
+- Default limit: 100 items
+- Maximum limit: 1000 items (alerts/agents), 500 items (vulnerabilities)
+- Automatic pagination for large datasets
+
+## 🔒 Security Features
+
+### Input Validation
+- All parameters validated with Pydantic models
+- SQL injection protection for query parameters
+- XSS protection for string inputs
+
+### Access Control
+- Tool access controlled by Wazuh user permissions
+- API key authentication for enhanced security
+- Audit logging for all tool usage
+
+### Data Sanitization
+- Sensitive data removed from responses
+- Error messages sanitized to prevent information disclosure
+- Request/response logging excludes credentials
+
+## 📞 Support
+
+### Tool-Specific Issues
+Each tool category has detailed documentation:
+- Parameter specifications
+- Example usage
+- Common errors and solutions
+- Performance optimization tips
+
+### General API Issues
+- **Connection problems**: Check [Connection Troubleshooting](../troubleshooting/connection.md)
+- **Authentication errors**: See [Security Configuration](../security/auth.md)
+- **Performance issues**: Review [Performance Tuning](../troubleshooting/performance.md)
+
+---
+
+**Ready to explore?** Click on any tool category above to see detailed documentation and examples.

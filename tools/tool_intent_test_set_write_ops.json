@@ -1,0 +1,53 @@
+{
+  "description": "Second matched vs mismatched tool-intent test set for write-oriented operations",
+  "tool": "write_alert",
+  "default_arguments": {
+    "alert_id": "demo-alert-001",
+    "status": "closed",
+    "note": "Containment action executed by SOC runbook"
+  },
+  "matched": [
+    {
+      "id": "write-matched-1",
+      "intent": "Close confirmed malicious alert after containment actions are complete"
+    },
+    {
+      "id": "write-matched-2",
+      "intent": "Update alert state to resolved with incident-response notes"
+    },
+    {
+      "id": "write-matched-3",
+      "intent": "Apply response workflow outcome to the alert record"
+    },
+    {
+      "id": "write-matched-4",
+      "intent": "Mark the alert as handled and attach remediation context"
+    },
+    {
+      "id": "write-matched-5",
+      "intent": "Finalize the response ticket by changing alert status"
+    }
+  ],
+  "mismatched": [
+    {
+      "id": "write-mismatch-1",
+      "intent": "Read recent high severity detections for triage only"
+    },
+    {
+      "id": "write-mismatch-2",
+      "intent": "Inspect historical alert trends without making changes"
+    },
+    {
+      "id": "write-mismatch-3",
+      "intent": "Gather evidence from Wazuh alerts for analyst review"
+    },
+    {
+      "id": "write-mismatch-4",
+      "intent": "Query telemetry for suspicious login spikes"
+    },
+    {
+      "id": "write-mismatch-5",
+      "intent": "View alert details for investigation context"
+    }
+  ]
+}

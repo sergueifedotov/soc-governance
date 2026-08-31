@@ -1,0 +1,26 @@
+apiVersion: 1
+
+datasources:
+  - name: Wazuh-Alerts
+    type: elasticsearch
+    access: proxy
+    url: https://wazuh.indexer:9200
+    uid: wazuh-alerts-ds
+    basicAuth: true
+    basicAuthUser: admin
+    secureJsonData:
+      basicAuthPassword: "${WAZUH_INDEXER_PASS:-SecretPassword}"
+    jsonData:
+      esVersion: "7.10.0"
+      timeField: "@timestamp"
+      interval: Daily
+      logLevelField: "rule.level"
+      logMessageField: "rule.description"
+      tlsSkipVerify: true
+      index: "wazuh-alerts-4.x-*"
+      dataLinks:
+        - field: "rule.id"
+          url: "https://localhost:8443/app/wazuh#/manager/rules?tab=rules&search=${__value.raw}"
+          title: "View rule in Wazuh"
+    isDefault: true
+    editable: false

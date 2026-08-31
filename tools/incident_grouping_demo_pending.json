@@ -1,0 +1,68 @@
+{
+  "incident_id": "INC-demo-pending",
+  "confidence_threshold": 0.65,
+  "window_minutes": 120,
+  "require_analyst_confirmation": true,
+  "alerts": [
+    {
+      "timestamp": "2026-01-01T10:00:00Z",
+      "rule": {
+        "id": "5710",
+        "level": 10,
+        "description": "Rule 5710"
+      },
+      "agent": {
+        "id": "001",
+        "name": "agent-001"
+      },
+      "data": {
+        "srcip": "203.0.113.5"
+      }
+    },
+    {
+      "timestamp": "2026-01-01T10:04:00Z",
+      "rule": {
+        "id": "5710",
+        "level": 10,
+        "description": "Rule 5710"
+      },
+      "agent": {
+        "id": "001",
+        "name": "agent-001"
+      },
+      "data": {
+        "srcip": "203.0.113.5"
+      }
+    },
+    {
+      "timestamp": "2026-01-01T10:07:00Z",
+      "rule": {
+        "id": "5710",
+        "level": 10,
+        "description": "Rule 5710"
+      },
+      "agent": {
+        "id": "002",
+        "name": "agent-002"
+      },
+      "data": {
+        "srcip": "203.0.113.5"
+      }
+    },
+    {
+      "timestamp": "2026-01-01T11:00:00Z",
+      "rule": {
+        "id": "9200",
+        "level": 7,
+        "description": "Rule 9200"
+      },
+      "agent": {
+        "id": "003",
+        "name": "agent-003"
+      },
+      "data": {
+        "srcip": "198.51.100.7"
+      }
+    }
+  ]
+}

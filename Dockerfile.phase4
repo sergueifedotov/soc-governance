@@ -1,0 +1,34 @@
+FROM python:3.12
+
+WORKDIR /app
+
+# Install build dependencies needed for scikit-learn and other packages to compile
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    g++ \
+    gfortran \
+    libopenblas-dev \
+    liblapack-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies for Phase 4 API
+RUN pip install --no-cache-dir \
+    fastapi \
+    uvicorn \
+    sqlalchemy \
+    psycopg2-binary \
+    neo4j \
+    minio \
+    python-multipart \
+    duckdb \
+    numpy \
+    scipy \
+    scikit-learn \
+    xgboost \
+    mlflow \
+    httpx \
+    tenacity
+
+# Runtime dependencies are installed by compose service commands for flexibility
+# across local development overlays.

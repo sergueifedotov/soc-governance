@@ -1,0 +1,115 @@
+{
+  "uid": "mcp-security-proxy-denied-calls",
+  "title": "MCP Proxy Denied Calls",
+  "tags": ["mcp", "security", "proxy", "denied"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "10s",
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Recent Denied Proxy Calls",
+      "gridPos": {"h": 18, "w": 24, "x": 0, "y": 0},
+      "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "mcp-proxy-json"},
+      "targets": [
+        {
+          "refId": "A",
+          "source": "url",
+          "url": "/recent-denied?limit=200",
+          "url_options": {"method": "GET", "data": ""},
+          "format": "table",
+          "type": "json",
+          "root_selector": "events",
+          "columns": [
+            {"selector": "timestamp", "text": "timestamp", "type": "string"},
+            {"selector": "request_id", "text": "request_id", "type": "string"},
+            {"selector": "method", "text": "method", "type": "string"},
+            {"selector": "tool", "text": "tool", "type": "string"},
+            {"selector": "reason", "text": "reason", "type": "string"},
+            {"selector": "client_ip", "text": "client_ip", "type": "string"},
+            {"selector": "metadata.decision_hint", "text": "decision_hint", "type": "string"},
+            {"selector": "metadata.risk_score", "text": "risk_score", "type": "number"},
+            {"selector": "metadata.labels", "text": "labels", "type": "string"},
+            {"selector": "metadata.rationale", "text": "rationale", "type": "string"},
+            {"selector": "arguments_summary", "text": "arguments_summary", "type": "string"}
+          ]
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "footer": {"show": false}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {"type": "auto"},
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "reason"},
+            "properties": [
+              {"id": "custom.width", "value": 220}
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "arguments_summary"},
+            "properties": [
+              {"id": "custom.width", "value": 500}
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "rationale"},
+            "properties": [
+              {"id": "custom.width", "value": 420}
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "labels"},
+            "properties": [
+              {"id": "custom.width", "value": 260}
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Denied Calls by Reason",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 18},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(mcp_security_proxy_denied_total[1m]))",
+          "legendFormat": "{{reason}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"drawStyle": "bars", "fillOpacity": 60}}}
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Top Denied Tools (range)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 18},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "topk(20, sum by (tool, reason) (increase(mcp_security_proxy_denied_total[$__range])))",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {"id": "organize", "options": {"excludeByName": {"Time": true}, "renameByName": {"Value": "denied"}}}
+      ]
+    }
+  ]
+}

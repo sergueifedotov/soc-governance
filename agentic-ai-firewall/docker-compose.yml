@@ -1,0 +1,34 @@
+services:
+  agentguard:
+    build: .
+    image: agentguard:latest
+    container_name: agentguard
+    ports:
+      - "8088:8088"
+    environment:
+      AGENTGUARD_LOG_LEVEL: INFO
+      AGENTGUARD_POLICY_FILE: /app/policy.yaml
+      # Default upstreams point to the local LLM served by Docker Model Runner
+      # (OpenAI-compatible API exposed at http://model-runner.docker.internal/engines/v1).
+      # AgentGuard's proxy appends "/v1/chat/completions" to AGENTGUARD_OPENAI_UPSTREAM,
+      # so the value below must end at "/engines".
+      # To use cloud OpenAI instead, set AGENTGUARD_OPENAI_UPSTREAM=https://api.openai.com
+      AGENTGUARD_OPENAI_UPSTREAM: "${AGENTGUARD_OPENAI_UPSTREAM:-http://model-runner.docker.internal/engines}"
+      AGENTGUARD_ANTHROPIC_UPSTREAM: "${AGENTGUARD_ANTHROPIC_UPSTREAM:-https://api.anthropic.com}"
+    extra_hosts:
+      # Required so the container can resolve Docker Model Runner's hostname.
+      - "model-runner.docker.internal:host-gateway"
+    volumes:
+      - ./policy.yaml:/app/policy.yaml:ro
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: agentguard-prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./examples/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - agentguard
+    profiles: ["observability"]

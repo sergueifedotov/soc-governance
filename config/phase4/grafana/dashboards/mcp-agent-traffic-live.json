@@ -1,0 +1,163 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [
+    {
+      "title": "MCP Agent Traffic (aggregate)",
+      "url": "/d/mcp-agent-traffic/mcp-agent-traffic",
+      "type": "link",
+      "icon": "dashboard",
+      "tags": []
+    }
+  ],
+  "liveNow": true,
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Live MCP JSON-RPC calls (auto-refresh 5 s)",
+      "description": "Most recent calls from the in-memory ring buffer (/observability/recent). One row per JSON-RPC call. Filter by tool, method, status, or auth subject in the column header. For long-term history, see the aggregate dashboard linked at the top of the page.",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "mcp-traffic-json"
+      },
+      "gridPos": {"h": 22, "w": 24, "x": 0, "y": 0},
+      "options": {
+        "showHeader": true,
+        "footer": {"show": false},
+        "cellHeight": "sm",
+        "sortBy": [{"displayName": "Time", "desc": true}]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left",
+            "cellOptions": {"type": "auto"},
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "Time"},
+            "properties": [
+              {"id": "custom.width", "value": 195},
+              {"id": "unit", "value": "dateTimeAsIso"}
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "Status"},
+            "properties": [
+              {"id": "custom.width", "value": 90},
+              {"id": "custom.cellOptions", "value": {"type": "color-text"}},
+              {
+                "id": "mappings",
+                "value": [
+                  {"type": "value", "options": {"success": {"color": "green",  "index": 0, "text": "success"}}},
+                  {"type": "value", "options": {"error":   {"color": "red",    "index": 1, "text": "error"}}}
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "Method"},
+            "properties": [{"id": "custom.width", "value": 130}]
+          },
+          {
+            "matcher": {"id": "byName", "options": "Request ID"},
+            "properties": [{"id": "custom.width", "value": 190}]
+          },
+          {
+            "matcher": {"id": "byName", "options": "Tool"},
+            "properties": [{"id": "custom.width", "value": 200}]
+          },
+          {
+            "matcher": {"id": "byName", "options": "Latency (ms)"},
+            "properties": [
+              {"id": "custom.width", "value": 110},
+              {"id": "unit", "value": "ms"},
+              {"id": "decimals", "value": 1},
+              {
+                "id": "custom.cellOptions",
+                "value": {"type": "gauge", "mode": "gradient"}
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {"color": "green",  "value": null},
+                    {"color": "yellow", "value": 250},
+                    {"color": "orange", "value": 1000},
+                    {"color": "red",    "value": 5000}
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "Auth subject"},
+            "properties": [{"id": "custom.width", "value": 160}]
+          },
+          {
+            "matcher": {"id": "byName", "options": "Client IP"},
+            "properties": [{"id": "custom.width", "value": 120}]
+          },
+          {
+            "matcher": {"id": "byName", "options": "Error"},
+            "properties": [
+              {"id": "custom.width", "value": 360},
+              {"id": "custom.cellOptions", "value": {"type": "auto", "wrapText": true}}
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "Args"},
+            "properties": [
+              {"id": "custom.cellOptions", "value": {"type": "auto", "wrapText": true}}
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "url": "/observability/recent?limit=200",
+          "url_options": {"method": "GET", "data": ""},
+          "root_selector": "events",
+          "columns": [
+            {"selector": "iso",          "text": "Time",         "type": "timestamp"},
+            {"selector": "method",       "text": "Method",       "type": "string"},
+            {"selector": "request_id",   "text": "Request ID",   "type": "string"},
+            {"selector": "tool",         "text": "Tool",         "type": "string"},
+            {"selector": "status",       "text": "Status",       "type": "string"},
+            {"selector": "duration_ms",  "text": "Latency (ms)", "type": "number"},
+            {"selector": "auth_subject", "text": "Auth subject", "type": "string"},
+            {"selector": "client_ip",    "text": "Client IP",    "type": "string"},
+            {"selector": "error_message","text": "Error",        "type": "string"},
+            {"selector": "params_summary.args_keys","text": "Args", "type": "string"}
+          ]
+        }
+      ]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["wazuh", "mcp", "observability", "live"],
+  "templating": {"list": []},
+  "time": {"from": "now-15m", "to": "now"},
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"]
+  },
+  "timezone": "browser",
+  "title": "MCP Agent Traffic - Live",
+  "uid": "mcp-agent-traffic-live",
+  "version": 2,
+  "weekStart": ""
+}

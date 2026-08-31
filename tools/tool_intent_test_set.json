@@ -1,0 +1,53 @@
+{
+  "description": "Small matched vs mismatched tool-intent test set for get_wazuh_alerts",
+  "tool": "get_wazuh_alerts",
+  "default_arguments": {
+    "time_range": "24h",
+    "min_level": 10,
+    "limit": 10
+  },
+  "matched": [
+    {
+      "id": "matched-1",
+      "intent": "Review recent high severity detections for SOC triage"
+    },
+    {
+      "id": "matched-2",
+      "intent": "Fetch alerts from the last 24 hours for investigation context"
+    },
+    {
+      "id": "matched-3",
+      "intent": "Read current Wazuh alert trends by severity"
+    },
+    {
+      "id": "matched-4",
+      "intent": "Collect alert evidence before incident escalation"
+    },
+    {
+      "id": "matched-5",
+      "intent": "Inspect suspicious alert volume spikes without changing systems"
+    }
+  ],
+  "mismatched": [
+    {
+      "id": "mismatch-1",
+      "intent": "Isolate compromised endpoints and terminate malicious processes immediately"
+    },
+    {
+      "id": "mismatch-2",
+      "intent": "Block attacker IP addresses at firewall level now"
+    },
+    {
+      "id": "mismatch-3",
+      "intent": "Quarantine infected hosts and disable their network access"
+    },
+    {
+      "id": "mismatch-4",
+      "intent": "Delete malicious files from all affected endpoints"
+    },
+    {
+      "id": "mismatch-5",
+      "intent": "Apply emergency containment policy and restart vulnerable agents"
+    }
+  ]
+}

@@ -1,0 +1,260 @@
+{
+  "allowed_methods": [
+    "initialize",
+    "notifications/initialized",
+    "ping",
+    "tools/list",
+    "tools/call"
+  ],
+  "denied_tools": [
+    "wazuh_block_ip",
+    "wazuh_isolate_host",
+    "wazuh_kill_process",
+    "wazuh_disable_user",
+    "wazuh_quarantine_file",
+    "wazuh_active_response",
+    "wazuh_firewall_drop",
+    "wazuh_host_deny",
+    "wazuh_restart",
+    "wazuh_unisolate_host",
+    "wazuh_enable_user",
+    "wazuh_restore_file",
+    "wazuh_firewall_allow",
+    "wazuh_host_allow"
+  ],
+  "blocked_argument_patterns": [
+    "(?i)\\b(ignore\\s+previous\\s+instructions|system\\s+prompt|tool\\s+override)\\b",
+    "(?i)\\b(drop\\s+table|union\\s+select|insert\\s+into|;\\s*shutdown)\\b",
+    "(?i)(\\.\\./|%2e%2e|\\$\\(|`[^`]+`)",
+    "(?i)\\b(curl|wget|nc|bash\\s+-c|powershell)\\b"
+  ],
+  "blocked_pattern_action": "challenge",
+  "llm_risk": {
+    "enabled": true,
+    "provider": "langchain",
+    "model": "ai/gemma3-qat:latest",
+    "base_url": "http://model-runner.docker.internal/engines/v1",
+    "api_key": "local-demo",
+    "timeout_seconds": 5,
+    "min_monitor_score": 0.55,
+    "min_challenge_score": 0.65,
+    "min_deny_score": 0.69,
+    "enforce": true,
+    "max_argument_chars": 2000,
+    "system_prompt": "You are an MCP security risk classifier. Return only compact JSON with keys: decision_hint, risk_score, labels, rationale. decision_hint must be one of allow, monitor, challenge, deny. risk_score must be 0..1. Never return allow when arguments indicate abuse, exfiltration, credential theft, fraud staging, covert mining/resource hijacking, privilege escalation, defense evasion, persistence, supply-chain tampering, ransomware, destructive wipe, or unauthorized key/role manipulation. For such content, return at least challenge."
+  },
+  "tool_intent": {
+    "enabled": true,
+    "provider": "langchain",
+    "model": "ai/gemma3-qat:latest",
+    "base_url": "http://model-runner.docker.internal/engines/v1",
+    "api_key": "local-demo",
+    "timeout_seconds": 5,
+    "min_monitor_score": 0.2,
+    "min_challenge_score": 0.3,
+    "min_deny_score": 0.6,
+    "enforce": true,
+    "max_argument_chars": 2000,
+    "require_intent_metadata": true,
+    "metadata_intent_keys": [
+      "intent",
+      "declared_intent",
+      "task_intent"
+    ],
+    "system_prompt": "You are an MCP tool-intent verifier. Compare declared intent against selected method/tool/arguments. Return only compact JSON with keys: decision_hint, intent_score, labels, rationale. decision_hint must be one of allow, monitor, challenge, deny. intent_score must be 0..1 where higher means stronger intent mismatch risk. If arguments include abuse objectives (exfiltration, credential/password/token theft, MFA bypass/account takeover, privilege escalation, defense evasion, forensic/log tampering, hidden persistence, supply-chain backdoor activity, ransomware/destructive wipe, fraud staging, or resource hijacking/mining concealment), you must return challenge or deny and never allow."
+  },
+  "max_body_bytes": 262144,
+  "tool_name_regex": "^[a-zA-Z0-9_:-]{1,120}$",
+  "masking_rules": [],
+  "discovery_rules": [
+    {
+      "signal": "untrusted_server_calls",
+      "action_on_trigger": "monitor"
+    },
+    {
+      "signal": "descriptor_drift_events",
+      "action_on_trigger": "monitor"
+    },
+    {
+      "signal": "execution_tool_blocks",
+      "action_on_trigger": "monitor"
+    },
+    {
+      "signal": "sandbox_attestation_failures",
+      "action_on_trigger": "monitor"
+    },
+    {
+      "signal": "dependency_health_failures",
+      "action_on_trigger": "monitor"
+    },
+    {
+      "signal": "security_layer_bypass_attempts",
+      "action_on_trigger": "monitor"
+    },
+    {
+      "signal": "isolated_executor_failures",
+      "action_on_trigger": "monitor"
+    },
+    {
+      "signal": "rootless_verification_failures",
+      "action_on_trigger": "monitor"
+    },
+    {
+      "signal": "filesystem_violations",
+      "action_on_trigger": "monitor"
+    },
+    {
+      "signal": "upstream_provenance_violations",
+      "action_on_trigger": "monitor"
+    },
+    {
+      "signal": "sensitive_egress_detected",
+      "action_on_trigger": "monitor"
+    }
+  ],
+  "trusted_servers": [
+    "http://wazuh-mcp-server:3000/mcp",
+    "http://wazuh-mcp-server:3000",
+    "wazuh-mcp-server:3000",
+    "http://host.docker.internal:3000/mcp",
+    "http://localhost:3000/mcp"
+  ],
+  "untrusted_server_action": "deny",
+  "tool_descriptor_hashes": {},
+  "descriptor_drift_action": "deny",
+  "execution_tool_profile": {
+    "enabled": true,
+    "action": "deny",
+    "patterns": [
+      "exec",
+      "shell",
+      "run_command",
+      "eval",
+      "subprocess",
+      "python_repl",
+      "bash",
+      "powershell",
+      "ssh"
+    ]
+  },
+  "sandbox_attestation_profile": {
+    "enabled": true,
+    "action": "deny",
+    "require_for_tools": [
+      "shell",
+      "exec",
+      "python_repl",
+      "bash",
+      "powershell"
+    ],
+    "trusted_issuers": [
+      "trusted-attestor",
+      "local-demo-attestor"
+    ],
+    "allowed_modes": [
+      "isolated",
+      "sandboxed",
+      "gvisor",
+      "firecracker"
+    ],
+    "max_age_seconds": 900,
+    "allow_missing_expiry": false,
+    "require_pass": true
+  },
+  "dependency_fail_safe_profile": {
+    "enabled": true,
+    "action": "deny",
+    "required_controls": [
+      "llm_risk",
+      "tool_intent"
+    ],
+    "require_network_reachability": true,
+    "health_cache_ttl_seconds": 15,
+    "prevent_silent_bypass": true
+  },
+  "isolated_executor_profile": {
+    "enabled": true,
+    "action": "deny",
+    "executor_url": "http://isolated-executor:8080/execute",
+    "fallback_to_upstream": false,
+    "require_for_tools": [
+      "shell",
+      "exec",
+      "python_repl",
+      "bash",
+      "powershell"
+    ],
+    "forward_on_success": true,
+    "max_retries": 2,
+    "timeout_seconds": 60,
+    "runtime_limits": {
+      "max_cpu_seconds": 30,
+      "max_memory_mb": 512,
+      "max_wall_time_seconds": 60,
+      "max_processes": 10,
+      "max_file_descriptors": 100,
+      "max_network_connections": 0
+    },
+    "require_rootless": true,
+    "rootless_verification": {
+      "verify_uid": true,
+      "verify_gid": true,
+      "verify_no_new_privs": true,
+      "verify_seccomp": true,
+      "verify_apparmor": false,
+      "verify_selinux": false
+    },
+    "filesystem_restrictions": {
+      "read_only_root": true,
+      "allow_write_paths": [
+        "/tmp",
+        "/var/tmp"
+      ],
+      "deny_read_paths": [
+        "/etc/shadow",
+        "/root/.ssh",
+        "/root/.aws",
+        "/root/.kube"
+      ],
+      "deny_write_paths": [
+        "/etc",
+        "/usr",
+        "/bin",
+        "/sbin",
+        "/lib",
+        "/lib64"
+      ],
+      "max_file_size_mb": 100,
+      "max_total_size_mb": 500,
+      "required_mounts": [
+        "/tmp"
+      ]
+    }
+  },
+  "upstream_provenance_profile": {
+    "enabled": true,
+    "action": "deny",
+    "allowed_destinations": [
+      "http://wazuh-mcp-server:3000",
+      "http://wazuh-mcp-server:3000/mcp"
+    ],
+    "blocked_destinations": [
+      "*.pastebin.com",
+      "*.termbin.com",
+      "*webhook*",
+      "*exfil*",
+      "*.ngrok.io",
+      "*.serveo.net"
+    ],
+    "require_destination_attestation": true,
+    "max_egress_bytes": 1048576,
+    "log_all_egress": true,
+    "egress_filter_patterns": [
+      "(?i)\\b(password|passwd|pwd)\\b",
+      "(?i)\\b(secret|api[_-]?key|token)\\b",
+      "(?i)\\b(private[_-]?key|ssh[_-]?key)\\b",
+      "(?i)\\b(credential|creds|auth)\\b",
+      "(?i)\\b(connection[_-]?string|database[_-]?url)\\b"
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+apiVersion: 1
+
+datasources:
+  - name: MCP Proxy JSON
+    type: yesoreyeram-infinity-datasource
+    access: proxy
+    uid: mcp-proxy-json
+    url: http://mcp-security-proxy:8090
+    editable: false
+    jsonData:
+      auth_method: bearerToken
+      allowed_hosts:
+        - http://mcp-security-proxy:8090
+    secureJsonData:
+      bearerToken: ${MCP_PROXY_API_KEY}

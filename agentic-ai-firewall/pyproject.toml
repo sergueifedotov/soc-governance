@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentguard"
+version = "0.1.0"
+description = "The Firewall for Autonomous AI Agents — inbound + outbound guardrails for LLM agent stacks."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "AgentGuard contributors" }]
+keywords = ["llm", "security", "prompt-injection", "agentic", "ai-firewall", "guardrails", "langchain", "autogen"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+]
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.6",
+    "httpx>=0.27",
+    "pyyaml>=6.0",
+    "prometheus-client>=0.20",
+]
+
+[project.optional-dependencies]
+ml = ["scikit-learn>=1.4", "joblib>=1.3"]
+langchain = ["langchain-core>=0.2"]
+autogen = ["pyautogen>=0.2"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "httpx>=0.27", "ruff>=0.4"]
+
+[project.scripts]
+agentguard = "agentguard.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/agentguard/agentguard"
+Documentation = "https://github.com/agentguard/agentguard/tree/main/docs"
+Issues = "https://github.com/agentguard/agentguard/issues"
+
+[tool.setuptools.packages.find]
+include = ["agentguard*"]
+
+[tool.setuptools.package-data]
+agentguard = ["ui/static/*", "policies/*.yaml"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

@@ -1,0 +1,22 @@
+services:
+  mcp-security-proxy:
+    build: .
+    container_name: mcp-security-proxy
+    environment:
+      MCP_PROXY_UPSTREAM_URL: ${MCP_PROXY_UPSTREAM_URL:-http://host.docker.internal:3000/mcp}
+      MCP_PROXY_UPSTREAM_API_KEY: ${MCP_PROXY_UPSTREAM_API_KEY:-}
+      MCP_PROXY_API_KEY: ${MCP_PROXY_API_KEY:-mcp_proxy_local_demo_change_me}
+      MCP_PROXY_POLICY_FILE: /app/config/policy.json
+      MCP_PROXY_FORWARD_TIMEOUT_SECONDS: ${MCP_PROXY_FORWARD_TIMEOUT_SECONDS:-30}
+      MCP_PROXY_LOG_LEVEL: ${MCP_PROXY_LOG_LEVEL:-INFO}
+      MCP_PROXY_LLM_API_KEY: ${MCP_PROXY_LLM_API_KEY:-}
+      MCP_PROXY_HISTORY_FILE: ${MCP_PROXY_HISTORY_FILE:-/app/data/runtime_history.json}
+      MCP_PROXY_USAGE_COUNTERS_FILE: ${MCP_PROXY_USAGE_COUNTERS_FILE:-/app/data/usage_counters.json}
+      MCP_PROXY_GOVERNANCE_DATA_DIR: ${MCP_PROXY_GOVERNANCE_DATA_DIR:-/app/data/governance}
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./config:/app/config
+      - ./mcp_security_proxy:/app/mcp_security_proxy:ro
+      - ./data:/app/data
+    restart: unless-stopped

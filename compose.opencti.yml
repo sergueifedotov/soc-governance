@@ -1,0 +1,204 @@
+# OpenCTI Threat Intelligence Platform overlay
+#
+# Usage (add to any existing compose stack):
+#   docker compose \
+#     -f compose.full.yml \
+#     -f compose.phase3.langgraph.yml \
+#     -f compose.phase4.yml \
+#     -f compose.opencti.yml \
+#     up -d
+#
+# OpenCTI UI:   http://localhost:8083
+# Admin email:  $OPENCTI_ADMIN_EMAIL  (default: admin@opencti.local)
+# Admin token:  $OPENCTI_ADMIN_TOKEN  (set in .env — used by phase4-api too)
+#
+# OpenCTI reuses phase4-rabbitmq and phase4-minio, so those services must be
+# running.  Dedicated ElasticSearch + Redis instances are started for OpenCTI.
+#
+# After starting, push any incident to OpenCTI from phase4-api:
+#   curl -X POST http://localhost:8082/cases/opencti/push/<incident_id>
+# or check connectivity:
+#   curl http://localhost:8082/cases/opencti/status
+
+name: wazuh-soc
+
+services:
+
+  # ========================================================================
+  # OpenCTI — dedicated ElasticSearch 8.x
+  # Must stay on opencti-net; the OpenCTI platform bridges both networks.
+  # ========================================================================
+
+  opencti-elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    container_name: opencti-elasticsearch
+    restart: unless-stopped
+    environment:
+      discovery.type:      single-node
+      xpack.ml.enabled:    "false"
+      xpack.security.enabled: "false"
+      cluster.name:        opencti-cluster
+      bootstrap.memory_lock: "true"
+      ES_JAVA_OPTS:        "-Xms1g -Xmx1g"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opencti_esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -q '\"status\":\"\\(green\\|yellow\\)\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - opencti-net
+
+  # ========================================================================
+  # OpenCTI — dedicated Redis 7
+  # ========================================================================
+
+  opencti-redis:
+    image: redis:7.2-alpine
+    container_name: opencti-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - opencti_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - opencti-net
+
+  # ========================================================================
+  # OpenCTI Platform
+  # Bridges opencti-net (ElasticSearch + Redis) and phase4 (RabbitMQ + MinIO)
+  # ========================================================================
+
+  opencti-platform:
+    # Override with OPENCTI_PLATFORM_IMAGE in .env to use a locally built
+    # native image (see tools/build-opencti-arm64.sh).  Example:
+    #   OPENCTI_PLATFORM_IMAGE=opencti/platform:6.4.0-local
+    image: ${OPENCTI_PLATFORM_IMAGE:-opencti/platform:6.4.0}
+    container_name: opencti-platform
+    restart: unless-stopped
+    environment:
+      NODE_OPTIONS:                   "--max-old-space-size=8096"
+      APP__PORT:                      "4000"
+      APP__BASE_URL:                  "${OPENCTI_BASE_URL:-http://localhost:8083}"
+      APP__ADMIN__EMAIL:              "${OPENCTI_ADMIN_EMAIL:-admin@opencti.local}"
+      APP__ADMIN__PASSWORD:           "${OPENCTI_ADMIN_PASSWORD:-OpenCTI_Admin_Change_Me!}"
+      APP__ADMIN__TOKEN:              "${OPENCTI_ADMIN_TOKEN:-a1b2c3d4-e5f6-7890-abcd-ef1234567890}"
+      APP__HEALTH_ACCESS_KEY:         "${OPENCTI_ADMIN_TOKEN:-a1b2c3d4-e5f6-7890-abcd-ef1234567890}"
+      REDIS__HOSTNAME:                opencti-redis
+      REDIS__PORT:                    "6379"
+      ELASTICSEARCH__URL:             "http://opencti-elasticsearch:9200"
+      MINIO__ENDPOINT:                phase4-minio
+      MINIO__PORT:                    "9000"
+      MINIO__USE_SSL:                 "false"
+      MINIO__ACCESS_KEY:              "${MINIO_ROOT_USER:-minioadmin}"
+      MINIO__SECRET_KEY:              "${MINIO_ROOT_PASSWORD:-minioadmin}"
+      RABBITMQ__HOSTNAME:             phase4-rabbitmq
+      RABBITMQ__PORT:                 "5672"
+      RABBITMQ__USERNAME:             phase4_user
+      RABBITMQ__PASSWORD:             "${RABBITMQ_PASSWORD:-change_me_in_production}"
+      RABBITMQ__VHOST:                phase4
+      RABBITMQ__QUEUE_TYPE:           classic
+      SMTP__HOSTNAME:                 localhost
+      SMTP__PORT:                     "25"
+      PROVIDERS__LOCAL__STRATEGY:     LocalStrategy
+    ports:
+      - "8083:4000"
+    depends_on:
+      opencti-elasticsearch:
+        condition: service_healthy
+      opencti-redis:
+        condition: service_healthy
+      phase4-rabbitmq:
+        condition: service_healthy
+      phase4-minio:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - >
+          wget -qO- --header="Authorization: Bearer ${OPENCTI_ADMIN_TOKEN:-a1b2c3d4-e5f6-7890-abcd-ef1234567890}"
+          http://localhost:4000/api/about
+          > /dev/null
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    networks:
+      - opencti-net
+      - phase4
+
+  # ========================================================================
+  # OpenCTI Worker
+  # Consumes STIX bundles from RabbitMQ and writes them to ElasticSearch via
+  # the platform's GraphQL API.  Without a worker, bundles pushed by
+  # connectors (or by phase4-api /cases/opencti/push) queue up and are never
+  # ingested.  One replica is sufficient for local dev.
+  # ========================================================================
+
+  opencti-worker:
+    image: ${OPENCTI_WORKER_IMAGE:-opencti/worker:6.4.0}
+    container_name: opencti-worker
+    restart: unless-stopped
+    environment:
+      OPENCTI_URL:        "http://opencti-platform:4000"
+      OPENCTI_TOKEN:      "${OPENCTI_ADMIN_TOKEN:-a1b2c3d4-e5f6-7890-abcd-ef1234567890}"
+      WORKER_LOG_LEVEL:   info
+    depends_on:
+      opencti-platform:
+        condition: service_healthy
+    networks:
+      - opencti-net
+      - phase4
+
+  # ========================================================================
+  # OpenCTI — built-in STIX2 file-import connector
+  # Enables drag-and-drop bundle uploads in the UI
+  # ========================================================================
+
+  opencti-connector-import-stix2:
+    image: ${OPENCTI_CONNECTOR_IMPORT_STIX2_IMAGE:-opencti/connector-import-file-stix:6.4.0}
+    container_name: opencti-connector-import-stix2
+    restart: unless-stopped
+    environment:
+      OPENCTI_URL:           "http://opencti-platform:4000"
+      OPENCTI_TOKEN:         "${OPENCTI_ADMIN_TOKEN:-a1b2c3d4-e5f6-7890-abcd-ef1234567890}"
+      CONNECTOR_ID:          "${OPENCTI_CONNECTOR_IMPORT_STIX2_ID:-11111111-2222-3333-4444-555555555555}"
+      CONNECTOR_TYPE:        INTERNAL_IMPORT_FILE
+      CONNECTOR_NAME:        "ImportFileStix2"
+      CONNECTOR_VALIDATE_BEFORE_IMPORT: "true"
+      CONNECTOR_SCOPE:       "application/json,text/xml"
+      CONNECTOR_AUTO:        "true"
+      CONNECTOR_CONFIDENCE_LEVEL: "75"
+      CONNECTOR_LOG_LEVEL:   info
+      RABBITMQ__VHOST:       phase4
+    depends_on:
+      opencti-platform:
+        condition: service_healthy
+    networks:
+      - opencti-net
+      - phase4
+
+volumes:
+  opencti_esdata:
+  opencti_redis_data:
+
+networks:
+  opencti-net:
+    driver: bridge
+  phase4:
+    # Defined in compose.phase4.yml; referenced here so services on this
+    # overlay can reach phase4-rabbitmq and phase4-minio.
+    driver: bridge

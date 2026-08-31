@@ -1,0 +1,3617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forensic Case Investigation — Layer 2</title>
+  <script src="/static/d3.min.js"></script>
+  <style>
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --border:    #2a2d3e;
+      --accent:    #6366f1;
+      --accent2:   #8b5cf6;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --danger:    #ef4444;
+      --warn:      #f59e0b;
+      --ok:        #22c55e;
+      --info:      #3b82f6;
+
+      --node-alert:       #ef4444;
+      --node-ip:          #3b82f6;
+      --node-domain:      #f97316;
+      --node-user:        #22c55e;
+      --node-workstation: #a855f7;
+      --node-process:     #eab308;
+      --node-file:        #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #6366f1, #a855f7);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    header .subtitle { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .health-bar {
+      margin-left: auto;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+    .health-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .health-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+    }
+    .health-dot.ok  { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    .health-dot.err { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+    .docs-link {
+      font-size: 12px;
+      color: var(--accent);
+      text-decoration: none;
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+    .docs-link:hover { border-color: var(--accent); }
+
+    /* ── Tabs ────────────────────────────────────────────────────────── */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      padding: 12px 24px 0;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .tab-btn {
+      padding: 8px 20px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      border-bottom: 2px solid transparent;
+      transition: color .15s;
+    }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-btn:hover:not(.active) { color: var(--text); }
+    .tab-panel { display: none; padding: 24px; }
+    .tab-panel.active { display: block; }
+
+    /* ── Query Cards ─────────────────────────────────────────────────── */
+    .query-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .query-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      transition: border-color .2s;
+    }
+    .query-card:hover { border-color: var(--accent); }
+    .query-card .card-icon {
+      font-size: 24px;
+      margin-bottom: 10px;
+    }
+    .query-card h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .query-card .card-desc {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 14px;
+      line-height: 1.5;
+    }
+    .input-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .input-row input, .input-row select {
+      flex: 1;
+      min-width: 0;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 7px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .input-row input:focus, .input-row select:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .input-row input::placeholder { color: var(--muted); }
+    .btn {
+      padding: 7px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: opacity .15s;
+      white-space: nowrap;
+    }
+    .btn:hover { opacity: .85; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-secondary { background: var(--border); color: var(--text); }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+    /* ── Results Panel ───────────────────────────────────────────────── */
+    .results-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      min-height: 120px;
+    }
+    .results-panel h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 14px;
+      color: var(--muted);
+    }
+    .results-panel h3 span { color: var(--text); }
+    .empty-state {
+      text-align: center;
+      color: var(--muted);
+      padding: 40px;
+      font-size: 13px;
+    }
+    .empty-state .icon { font-size: 40px; margin-bottom: 10px; }
+
+    /* Incident IDs result list */
+    .incident-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .incident-chip {
+      background: var(--bg);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-family: monospace;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .incident-chip:hover { background: var(--accent); color: #fff; }
+
+    /* Enriched incident result cards */
+    .inc-result-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      transition: border-color .15s;
+    }
+    .inc-result-card:hover { border-color: var(--accent); }
+    .inc-result-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 5px;
+    }
+    .inc-result-id {
+      font-family: monospace;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      cursor: pointer;
+    }
+    .inc-result-id:hover { text-decoration: underline; }
+    .inc-result-badge {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .inc-sla-tag {
+      font-size: 10px;
+      font-weight: 700;
+      color: #ef4444;
+    }
+    .inc-result-title {
+      font-size: 12px;
+      color: var(--text);
+      margin-bottom: 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .inc-result-footer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .inc-ip {
+      font-family: monospace;
+      font-size: 11px;
+      color: var(--muted);
+      flex: 1;
+    }
+    .inc-open-link {
+      text-decoration: none;
+    }
+
+    /* Lateral movement table */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      text-align: left;
+      font-weight: 600;
+      color: var(--muted);
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    tr:last-child td { border-bottom: none; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-danger  { background: rgba(239,68,68,.15);  color: var(--danger); }
+    .badge-warn    { background: rgba(245,158,11,.15); color: var(--warn); }
+    .badge-ok      { background: rgba(34,197,94,.15);  color: var(--ok); }
+    .badge-info    { background: rgba(59,130,246,.15); color: var(--info); }
+    .badge-purple  { background: rgba(168,85,247,.15); color: #a855f7; }
+
+    /* Attack chain */
+    .chain-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .chain-hop {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin: 2px 0;
+    }
+    .chain-arrow { color: var(--muted); }
+    .chain-rel {
+      font-size: 10px;
+      color: var(--muted);
+      font-style: italic;
+      margin: 0 4px;
+    }
+
+    /* ── Timeline Tab ────────────────────────────────────────────────── */
+    .timeline-input-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .timeline-input-row input {
+      flex: 1;
+      max-width: 360px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 9px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .timeline-input-row input:focus { outline: none; border-color: var(--accent); }
+    .incident-suggestions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    .suggestion-chip {
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 3px 10px;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+    .suggestion-chip:hover { color: var(--text); border-color: var(--accent); }
+
+    .timeline-wrapper {
+      position: relative;
+      padding-left: 28px;
+    }
+    .timeline-wrapper::before {
+      content: '';
+      position: absolute;
+      left: 10px;
+      top: 0; bottom: 0;
+      width: 2px;
+      background: var(--border);
+    }
+    .tl-event {
+      position: relative;
+      margin-bottom: 20px;
+    }
+    .tl-dot {
+      position: absolute;
+      left: -24px;
+      top: 14px;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      border: 2px solid var(--bg);
+      background: var(--accent);
+    }
+    .sev-dot-15, .sev-dot-14 { background: var(--danger); }
+    .sev-dot-12, .sev-dot-13 { background: #f97316; }
+    .sev-dot-8,  .sev-dot-9,  .sev-dot-10 { background: var(--warn); }
+    .sev-dot-7,  .sev-dot-6   { background: var(--ok); }
+    .tl-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .tl-ts {
+      font-size: 11px;
+      color: var(--muted);
+      font-family: monospace;
+      margin-bottom: 6px;
+    }
+    .tl-rule {
+      font-weight: 600;
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+    .tl-log {
+      font-size: 11px;
+      color: var(--muted);
+      font-family: monospace;
+      background: var(--bg);
+      padding: 8px 10px;
+      border-radius: 6px;
+      white-space: pre-wrap;
+      overflow-x: auto;
+      margin-bottom: 8px;
+      max-height: 80px;
+      overflow-y: hidden;
+    }
+    .tl-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .tl-link-chip {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-family: monospace;
+    }
+    .chip-ALERT       { border-color: var(--node-alert);       color: var(--node-alert); }
+    .chip-IP_ADDRESS  { border-color: var(--node-ip);          color: var(--node-ip); }
+    .chip-DOMAIN      { border-color: var(--node-domain);      color: var(--node-domain); }
+    .chip-USER        { border-color: var(--node-user);        color: var(--node-user); }
+    .chip-WORKSTATION { border-color: var(--node-workstation); color: var(--node-workstation); }
+    .chip-PROCESS     { border-color: var(--node-process);     color: var(--node-process); }
+    .chip-FILE        { border-color: var(--node-file);        color: var(--node-file); }
+
+    /* ── Graph Tab ───────────────────────────────────────────────────── */
+    .graph-controls {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .graph-controls input {
+      flex: 1;
+      max-width: 360px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 9px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .graph-controls input:focus { outline: none; border-color: var(--accent); }
+    .graph-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .legend-dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    #graph-container {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      height: 520px;
+      position: relative;
+    }
+    #graph-svg {
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+    }
+    #graph-svg:active { cursor: grabbing; }
+    .graph-tooltip {
+      position: fixed;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .15s;
+      max-width: 320px;
+      z-index: 1000;
+      white-space: pre-wrap;
+      font-family: monospace;
+      line-height: 1.5;
+    }
+    .graph-empty {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 13px;
+      gap: 10px;
+    }
+    .graph-empty .icon { font-size: 40px; }
+
+    /* ── All Cases Tab ───────────────────────────────────────────────── */
+    .cases-toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .cases-toolbar select, .cases-toolbar input {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 7px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .cases-toolbar select:focus, .cases-toolbar input:focus {
+      outline: none; border-color: var(--accent);
+    }
+    .cases-count { margin-left: auto; font-size: 12px; color: var(--muted); }
+    .cases-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 12px;
+    }
+    .case-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      transition: border-color .15s;
+    }
+    .case-card:hover { border-color: var(--accent); }
+    .case-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .case-id {
+      font-family: monospace;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      cursor: pointer;
+    }
+    .case-id:hover { text-decoration: underline; }
+    .case-sla-breach { font-size: 10px; font-weight: 700; color: var(--danger); margin-left: auto; }
+    .case-title {
+      font-size: 12px;
+      color: var(--text);
+      margin-bottom: 8px;
+      line-height: 1.4;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .case-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .case-ip { font-family: monospace; font-size: 11px; color: var(--muted); flex: 1; }
+    .case-footer { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    /* ── Loading spinner ─────────────────────────────────────────────── */
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Error banner ────────────────────────────────────────────────── */
+    .error-banner {
+      background: rgba(239,68,68,.1);
+      border: 1px solid rgba(239,68,68,.4);
+      color: var(--danger);
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+
+    /* ── Enrichment loop tab ────────────────────────────────────────── */
+    .loop-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .loop-step {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--card);
+      padding: 14px;
+    }
+    .loop-step h4 {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin: 0 0 8px;
+      color: var(--text);
+      font-size: 14px;
+    }
+    .loop-step-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      padding: 2px 8px;
+      font-size: 10px;
+      letter-spacing: 0.2px;
+      text-transform: uppercase;
+      white-space: nowrap;
+      color: var(--muted);
+      background: #0b1220;
+    }
+    .loop-step-status.running {
+      border-color: rgba(59,130,246,.55);
+      color: #93c5fd;
+      background: rgba(59,130,246,.12);
+    }
+    .loop-step-status.ok {
+      border-color: rgba(34,197,94,.55);
+      color: #86efac;
+      background: rgba(34,197,94,.12);
+    }
+    .loop-step-status.error {
+      border-color: rgba(239,68,68,.55);
+      color: #fca5a5;
+      background: rgba(239,68,68,.12);
+    }
+    .loop-step p {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .loop-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .loop-row:last-child { margin-bottom: 0; }
+    .loop-row input,
+    .loop-row select {
+      min-width: 110px;
+      flex: 1;
+    }
+    .loop-incident-source {
+      margin-top: -2px;
+      margin-bottom: 8px;
+      font-size: 11px;
+      color: var(--muted);
+      min-height: 16px;
+    }
+    .loop-results {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #050910;
+      padding: 12px;
+      min-height: 260px;
+      max-height: 560px;
+      overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      color: #cbd5e1;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* ── Incident grouping tab ─────────────────────────────────────── */
+    .grouping-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .grouping-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--card);
+      padding: 14px;
+    }
+    .grouping-card h4 {
+      margin: 0 0 8px;
+      color: var(--text);
+      font-size: 14px;
+    }
+    .grouping-card p {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .grouping-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .grouping-row:last-child { margin-bottom: 0; }
+    .grouping-row input,
+    .grouping-row select,
+    .grouping-row textarea {
+      flex: 1;
+      min-width: 120px;
+    }
+    .grouping-row textarea {
+      min-height: 180px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.4;
+      resize: vertical;
+    }
+    .grouping-result-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .grouping-stat {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(15, 23, 42, 0.6);
+      padding: 8px 10px;
+    }
+    .grouping-stat-label {
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+    .grouping-stat-value {
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      word-break: break-word;
+    }
+    .grouping-pill {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.2px;
+      padding: 2px 8px;
+      margin-left: 8px;
+      color: var(--muted);
+      background: #0b1220;
+    }
+    .grouping-pill.ok {
+      border-color: rgba(34,197,94,.55);
+      color: #86efac;
+      background: rgba(34,197,94,.12);
+    }
+    .grouping-pill.wait {
+      border-color: rgba(245,158,11,.55);
+      color: #fcd34d;
+      background: rgba(245,158,11,.12);
+    }
+    .grouping-pill.err {
+      border-color: rgba(239,68,68,.55);
+      color: #fca5a5;
+      background: rgba(239,68,68,.12);
+    }
+    .grouping-table-wrap {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: auto;
+    }
+    .grouping-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 820px;
+      font-size: 12px;
+    }
+    .grouping-table th,
+    .grouping-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    .grouping-table th {
+      position: sticky;
+      top: 0;
+      background: #111827;
+      color: var(--muted);
+      text-align: left;
+      font-weight: 600;
+    }
+    .grouping-table tr:last-child td { border-bottom: none; }
+    .grouping-inline-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      color: #cbd5e1;
+    }
+    @media (max-width: 1180px) {
+      .grouping-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- HEADER -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<header>
+  <div>
+    <h1>🔍 Forensic Case Investigation</h1>
+    <div class="subtitle">Layer 2 — Neo4j Graph Queries &amp; Evidence</div>
+  </div>
+  <div class="health-bar">
+    <div class="health-pill">
+      <div class="health-dot" id="dot-neo4j"></div>
+      <span id="lbl-neo4j">Neo4j …</span>
+    </div>
+    <div class="health-pill">
+      <div class="health-dot" id="dot-minio"></div>
+      <span id="lbl-minio">MinIO …</span>
+    </div>
+    <a class="docs-link" href="/docs#/Layer%202%3A%20Case%20Management%20%26%20Evidence" target="_blank">API Docs</a>
+    <a class="docs-link" href="/ui">Incident CRUD</a>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TABS -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="queries">🔎 Investigator Queries</button>
+  <button class="tab-btn" data-tab="loop">♻️ Enrichment Loop</button>
+  <button class="tab-btn" data-tab="grouping">🧩 Incident Grouping</button>
+  <button class="tab-btn" data-tab="playbooks">📘 Playbooks</button>
+  <button class="tab-btn" data-tab="mitre">🎯 MITRE ATT&amp;CK</button>
+  <button class="tab-btn" data-tab="ioc-pivot">🧭 IOC Pivot</button>
+  <button class="tab-btn" data-tab="timeline">📅 Incident Timeline</button>
+  <button class="tab-btn" data-tab="graph">🕸️ Graph View</button>
+  <button class="tab-btn" data-tab="all-cases" id="tab-btn-all-cases">📋 All Cases</button>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB: QUERIES -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="tab-queries" class="tab-panel active">
+  <div class="query-grid">
+
+    <!-- C2 Domain Lookup -->
+    <div class="query-card">
+      <div class="card-icon">🌐</div>
+      <h3>Show all incidents involving this C2 domain</h3>
+      <div class="card-desc">
+        Pivot from a domain indicator (C2 server, exfil endpoint) to every
+        incident whose graph touches it — via IP → RESOLVES_TO → DOMAIN.
+      </div>
+      <div class="input-row">
+        <input id="q-domain" type="text" placeholder="malware-c2.badactor.ru"
+               value="malware-c2.badactor.ru">
+        <button class="btn btn-primary" onclick="runByDomain()">Run</button>
+      </div>
+    </div>
+
+    <!-- IP Pivot -->
+    <div class="query-card">
+      <div class="card-icon">📡</div>
+      <h3>Which incidents touched this IP address?</h3>
+      <div class="card-desc">
+        Find all incident IDs where an ALERT node is linked (INVOLVES) to a
+        given IP_ADDRESS — source or destination.
+      </div>
+      <div class="input-row">
+        <input id="q-ip" type="text" placeholder="198.51.100.77"
+               value="198.51.100.77">
+        <button class="btn btn-primary" onclick="runByIP()">Run</button>
+      </div>
+    </div>
+
+    <!-- User Activity -->
+    <div class="query-card">
+      <div class="card-icon">👤</div>
+      <h3>Which incidents involve this user account?</h3>
+      <div class="card-desc">
+        Return every incident where the user account appears as an INVOLVES
+        linked node — useful for insider-threat and credential-abuse analysis.
+      </div>
+      <div class="input-row">
+        <input id="q-user" type="text" placeholder="alice" value="alice">
+        <button class="btn btn-primary" onclick="runByUser()">Run</button>
+      </div>
+    </div>
+
+    <!-- Lateral Movement -->
+    <div class="query-card">
+      <div class="card-icon">🔀</div>
+      <h3>Detect lateral movement candidates</h3>
+      <div class="card-desc">
+        Find users who logged in to ≥ N distinct workstations
+        (USER → LOGGED_IN_TO → WORKSTATION). Classic pivot-detection pattern.
+      </div>
+      <div class="input-row">
+        <input id="q-minws" type="number" min="2" max="10" value="2"
+               style="max-width:80px">
+        <span style="font-size:12px;color:var(--muted)">min workstations</span>
+        <button class="btn btn-primary" onclick="runLateralMovement()">Run</button>
+      </div>
+    </div>
+
+    <!-- Attack Chain -->
+    <div class="query-card">
+      <div class="card-icon">⛓️</div>
+      <h3>Trace attack chain from this source IP</h3>
+      <div class="card-desc">
+        Walk the graph from a source IP up to N hops — reveals the full
+        kill-chain path: IP → PROCESS → FILE → DOMAIN → …
+      </div>
+      <div class="input-row">
+        <input id="q-chainip" type="text" placeholder="198.51.100.77"
+               value="198.51.100.77">
+        <input id="q-chainhops" type="number" min="1" max="10" value="5"
+               style="max-width:65px" title="Max hops">
+        <button class="btn btn-primary" onclick="runAttackChain()">Run</button>
+      </div>
+    </div>
+
+    <!-- Quick Graph -->
+    <div class="query-card">
+      <div class="card-icon">🕸️</div>
+      <h3>Visualise incident subgraph</h3>
+      <div class="card-desc">
+        Load the full Neo4j subgraph for an incident and render it as an
+        interactive force-directed graph (opens Graph View tab).
+      </div>
+      <div class="input-row">
+        <input id="q-graph-inc" type="text" placeholder="INC-FORENSIC-001"
+               value="INC-FORENSIC-001">
+        <button class="btn btn-primary" onclick="loadGraphFromQuery()">Open Graph</button>
+      </div>
+    </div>
+
+  </div><!-- /query-grid -->
+
+  <!-- Results -->
+  <div class="results-panel" id="query-results">
+    <h3>Results — <span id="results-label">select a query above</span></h3>
+    <div class="empty-state" id="results-empty">
+      <div class="icon">🔍</div>
+      Run one of the investigator queries above to see results here.
+    </div>
+    <div id="results-body" style="display:none"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB: ENRICHMENT LOOP -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="tab-loop" class="tab-panel">
+  <div class="loop-grid">
+    <div class="loop-step">
+      <h4>Step 1: Pull New Alerts into OpenCTI <span id="loop-step-1" class="loop-step-status">idle</span></h4>
+      <p>Sync recent Wazuh alerts and ingest them into OpenCTI so observables become searchable.</p>
+      <div class="loop-row">
+          <input id="loop-sync-hours" type="number" min="1" max="168" value="24" title="Hours">
+          <input id="loop-sync-min" type="number" min="1" max="15" value="5" title="Min level">
+          <input id="loop-sync-batch" type="number" min="1" max="500" value="200" title="Batch size">
+      </div>
+      <div class="loop-row">
+        <button class="btn btn-secondary" onclick="loopSyncAlerts()">Sync Alerts</button>
+      </div>
+    </div>
+
+    <div class="loop-step">
+      <h4>Step 2: Read Enriched Intel from OpenCTI <span id="loop-step-2" class="loop-step-status">idle</span></h4>
+      <p>Search indicators/observables by value and pull latest linked entities from OpenCTI.</p>
+      <div class="loop-row">
+        <input id="loop-observable" type="text" placeholder="198.51.100.77" value="198.51.100.77">
+      </div>
+      <div class="loop-row">
+        <button class="btn btn-secondary" onclick="loopLookupIndicator()">Lookup Indicator</button>
+        <button class="btn btn-secondary" onclick="loopLoadOpenCTICases()">List OpenCTI Cases</button>
+      </div>
+    </div>
+
+    <div class="loop-step">
+      <h4>Step 3: Pull Graph Context Back via MCP Read API <span id="loop-step-3" class="loop-step-status">idle</span></h4>
+      <p>Query Neo4j attack-chain context for the same pivot to verify blast radius and path depth.</p>
+      <div class="loop-row">
+        <input id="loop-chain-hops" type="number" min="1" max="6" value="5" title="Max hops">
+        <button class="btn btn-secondary" onclick="loopLoadAttackChain()">Load Attack Chain</button>
+      </div>
+    </div>
+
+    <div class="loop-step">
+      <h4>Step 4: Escalate to Phase 3 Response <span id="loop-step-4" class="loop-step-status">idle</span></h4>
+      <p>Optionally send the enriched incident context to the Phase 3 workflow orchestrator.</p>
+      <div class="loop-row">
+        <input id="loop-incident-id" type="text" placeholder="INC-FORENSIC-001" value="INC-FORENSIC-001">
+        <select id="loop-risk-tier">
+          <option value="critical">critical</option>
+          <option value="high" selected>high</option>
+          <option value="medium">medium</option>
+          <option value="low">low</option>
+        </select>
+      </div>
+      <div id="loop-incident-source" class="loop-incident-source"></div>
+      <div class="loop-row">
+        <select id="loop-use-case">
+          <option value="containment">containment</option>
+          <option value="network_scan" selected>network_scan</option>
+          <option value="host_isolation">host_isolation</option>
+        </select>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+          <input id="loop-auto-approve" type="checkbox"> auto-approve
+        </label>
+      </div>
+      <div class="loop-row">
+        <button class="btn btn-primary" onclick="loopEscalatePhase3()">Escalate to Phase 3</button>
+        <button class="btn btn-primary" onclick="runFullEnrichmentLoop()">Run Full Loop</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="results-panel">
+    <h3>9.4 Loop Execution Output</h3>
+    <div id="loop-results" class="loop-results">Ready. Execute any step above or run the full loop.</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB: INCIDENT GROUPING -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="tab-grouping" class="tab-panel">
+  <div class="grouping-grid">
+    <div class="grouping-card">
+      <h4>Trigger Incident Grouping <span id="grouping-status-pill" class="grouping-pill">idle</span></h4>
+      <p>
+        Cluster similar alerts into incident groups, optionally pause for analyst confirmation,
+        then resume with an approval or rejection decision.
+      </p>
+      <div class="grouping-row">
+        <input id="grouping-incident-id" type="text" placeholder="INC-demo-4-alert" value="INC-demo-4-alert">
+        <input id="grouping-threshold" type="number" min="0" max="1" step="0.01" value="0.65" title="Confidence threshold">
+        <input id="grouping-window" type="number" min="1" max="1440" step="1" value="120" title="Window minutes">
+      </div>
+      <div class="grouping-row">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+          <input id="grouping-require-confirmation" type="checkbox"> require analyst confirmation
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+          <input id="grouping-auto-approve" type="checkbox"> auto-approve when confirmation required
+        </label>
+      </div>
+      <div class="grouping-row">
+        <button class="btn btn-primary" onclick="runIncidentGrouping()">Run Grouping</button>
+        <button class="btn btn-secondary" onclick="checkIncidentGroupingPending()">Check Pending</button>
+        <button class="btn btn-primary" onclick="runIncidentGroupingDemoFlow()">Run Demo Flow</button>
+      </div>
+      <div class="grouping-row">
+        <input id="grouping-actor" type="text" placeholder="soc-analyst" value="soc-analyst">
+        <button class="btn btn-secondary" onclick="resumeIncidentGrouping('approved')">Resume Approved</button>
+        <button class="btn btn-secondary" onclick="resumeIncidentGrouping('rejected')">Resume Rejected</button>
+      </div>
+    </div>
+
+    <div class="grouping-card">
+      <h4>Alert Input JSON</h4>
+      <p>Paste an alert array (raw Wazuh-like objects). You can start with the demo payload.</p>
+      <div class="grouping-row">
+        <button class="btn btn-secondary btn-sm" onclick="loadIncidentGroupingDemoAlerts('mixed')">Load Demo (3 related + 1 distinct)</button>
+        <button class="btn btn-secondary btn-sm" onclick="loadIncidentGroupingDemoAlerts('pending')">Load Demo (pending confirmation)</button>
+        <button class="btn btn-secondary btn-sm" onclick="loadIncidentGroupingLiveAlerts()">Load Live Wazuh Alerts</button>
+      </div>
+      <div class="grouping-row">
+        <input id="grouping-live-limit" type="number" min="1" max="200" step="1" value="50" title="Live alert fetch limit">
+        <input id="grouping-live-level" type="text" value="5+" title="Live alert level filter">
+        <input id="grouping-live-query" type="text" placeholder="Optional Lucene query" title="Optional Lucene query for live alert fetch">
+      </div>
+      <div class="grouping-row">
+        <textarea id="grouping-alerts-json" spellcheck="false"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="results-panel">
+    <h3>Incident Grouping Results</h3>
+    <div id="grouping-render" class="empty-state">
+      <div class="icon">🧩</div>
+      Run grouping to see readable summaries by group (confidence, rules, IPs, agents, and time range).
+    </div>
+    <div id="grouping-raw" class="loop-results" style="margin-top:12px">Raw response log will appear here.</div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB: INVESTIGATION PLAYBOOKS -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="tab-playbooks" class="tab-panel">
+  <div class="grouping-grid">
+    <div class="grouping-card">
+      <h4>Run Investigation Playbook <span id="playbook-status-pill" class="grouping-pill">idle</span></h4>
+      <p>
+        Use-case-specific LangGraph workflows (brute force, beaconing, malware,
+        privilege escalation, exfiltration). Read-only investigation: collects
+        evidence, scores risk, recommends a containment action, and pauses at a
+        safety gate when risk is high or critical.
+      </p>
+      <div class="grouping-row">
+        <input id="playbook-incident-id" type="text" placeholder="INC-pb-demo" value="INC-pb-demo">
+        <select id="playbook-name" title="Playbook">
+          <option value="brute_force">brute_force</option>
+          <option value="beaconing">beaconing</option>
+          <option value="malware">malware</option>
+          <option value="privilege_escalation">privilege_escalation</option>
+          <option value="exfiltration">exfiltration</option>
+        </select>
+        <input id="playbook-time-range" type="text" placeholder="24h" value="24h" title="Time range (e.g. 1h, 24h, 7d)">
+      </div>
+      <div class="grouping-row">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+          <input id="playbook-auto-approve" type="checkbox"> auto-approve safety gate
+        </label>
+        <input id="playbook-actor" type="text" placeholder="soc-analyst" value="soc-analyst" title="Actor for resume decisions">
+      </div>
+      <div class="grouping-row">
+        <button class="btn btn-primary" onclick="runPlaybook()">Run Playbook</button>
+        <button class="btn btn-secondary" onclick="checkPlaybookPending()">Check Pending</button>
+        <button class="btn btn-secondary" onclick="resumePlaybook('approved')">Resume Approved</button>
+        <button class="btn btn-secondary" onclick="resumePlaybook('rejected')">Resume Rejected</button>
+      </div>
+      <div class="grouping-row">
+        <button class="btn btn-primary" onclick="runPlaybookDemoFlow()">Run Demo Flow</button>
+        <button class="btn btn-secondary" onclick="loadPlaybookList()">Refresh Playbook List</button>
+      </div>
+    </div>
+
+    <div class="grouping-card">
+      <h4>Evidence Hints</h4>
+      <p>Optional indicators used to focus MCP queries. Leave blank to investigate broadly.</p>
+      <div class="grouping-row">
+        <input id="pb-ev-src-ip" type="text" placeholder="src_ip (e.g. 203.0.113.5)">
+        <input id="pb-ev-dst-ip" type="text" placeholder="dst_ip (e.g. 198.51.100.42)">
+      </div>
+      <div class="grouping-row">
+        <input id="pb-ev-agent-id" type="text" placeholder="agent_id (e.g. 002)">
+        <input id="pb-ev-user" type="text" placeholder="user (e.g. jdoe)">
+      </div>
+      <div class="grouping-row">
+        <input id="pb-ev-file-path" type="text" placeholder="file_path (e.g. /tmp/x.bin)">
+        <input id="pb-ev-file-hash" type="text" placeholder="file_hash (sha256)">
+      </div>
+      <div class="grouping-row">
+        <input id="pb-ev-domain" type="text" placeholder="domain (e.g. evil.example)">
+      </div>
+      <h4 style="margin-top:12px">Threshold Overrides (advanced, optional)</h4>
+      <p style="font-size:12px;color:var(--muted)">JSON object, e.g. <code>{"medium": -1, "high": -1}</code> forces high-risk pending state.</p>
+      <div class="grouping-row">
+        <textarea id="pb-threshold-overrides" spellcheck="false" placeholder='{"medium": -1, "high": -1}'></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="results-panel">
+    <h3>Playbook Result</h3>
+    <div id="playbook-render" class="empty-state">
+      <div class="icon">📘</div>
+      Run a playbook to see risk tier, signals, evidence, proposed action, and step trace.
+    </div>
+    <div id="playbook-raw" class="loop-results" style="margin-top:12px">Raw response log will appear here.</div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB: MITRE ATT&CK MAPPING -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="tab-mitre" class="tab-panel">
+  <div class="grouping-grid">
+    <div class="grouping-card">
+      <h4>Map Wazuh Alerts → MITRE ATT&amp;CK <span id="mitre-status-pill" class="grouping-pill">idle</span></h4>
+      <p>
+        Pulls recent Wazuh alerts and classifies them into MITRE ATT&amp;CK techniques
+        with confidence + rationale. Calls
+        <code>POST /soc/mitre-map</code> which proxies to the MCP tool
+        <code>map_alerts_to_mitre_attack</code>. Engine is deterministic by default
+        and uses LangChain refinement when <code>include_llm</code> is enabled and a
+        local model is reachable.
+      </p>
+      <div class="grouping-row">
+        <select id="mitre-time-range" title="Time range">
+          <option value="1h">1h</option>
+          <option value="6h">6h</option>
+          <option value="12h">12h</option>
+          <option value="24h" selected>24h</option>
+          <option value="7d">7d</option>
+          <option value="30d">30d</option>
+        </select>
+        <input id="mitre-min-level" type="number" min="1" max="15" step="1" value="5" title="Minimum rule level (1-15)">
+        <input id="mitre-limit" type="number" min="1" max="100" step="1" value="50" title="Max alerts to analyze (1-100)">
+      </div>
+      <div class="grouping-row">
+        <input id="mitre-query" type="text" placeholder="Optional Lucene query (e.g. ssh OR brute)" title="Optional Lucene query">
+        <input id="mitre-rule-id" type="text" placeholder="Optional rule_id" title="Optional Wazuh rule id">
+      </div>
+      <div class="grouping-row">
+        <input id="mitre-agent-id" type="text" placeholder="Optional agent_id" title="Optional Wazuh agent id">
+        <input id="mitre-srcip" type="text" placeholder="Optional source IP" title="Optional source IP filter">
+      </div>
+      <div class="grouping-row">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+          <input id="mitre-include-llm" type="checkbox" checked> include LLM refinement
+        </label>
+      </div>
+      <div class="grouping-row">
+        <button class="btn btn-primary" onclick="runMitreMap()">Run Mapping</button>
+        <button class="btn btn-secondary" onclick="runMitreMapPreset('auth')">Preset: Auth</button>
+        <button class="btn btn-secondary" onclick="runMitreMapPreset('web')">Preset: Web</button>
+        <button class="btn btn-secondary" onclick="runMitreMapPreset('malware')">Preset: Malware</button>
+        <button class="btn btn-secondary" onclick="runMitreMapPreset('lateral')">Preset: Lateral</button>
+      </div>
+    </div>
+
+    <div class="grouping-card">
+      <h4>Run Summary</h4>
+      <div id="mitre-summary" class="empty-state" style="padding:14px">
+        <div class="icon">🎯</div>
+        Run a mapping to see engine, alerts analyzed, technique count, top confidence, and overall rationale.
+      </div>
+    </div>
+  </div>
+
+  <div class="results-panel">
+    <h3>MITRE ATT&amp;CK Technique Mappings</h3>
+    <div id="mitre-render" class="empty-state">
+      <div class="icon">🧬</div>
+      Run mapping to see techniques with confidence bars, supporting alert counts, and rationale.
+    </div>
+    <div id="mitre-raw" class="loop-results" style="margin-top:12px">Raw response log will appear here.</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB: IOC PIVOT (Wazuh + OpenCTI + Neo4j) -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="tab-ioc-pivot" class="tab-panel">
+  <div class="grouping-grid">
+    <div class="grouping-card">
+      <h4>IOC Pivot — Wazuh / OpenCTI / Neo4j <span id="ioc-status-pill" class="grouping-pill">idle</span></h4>
+      <p>
+        Pivot a single IOC (IP, domain, hash, or username) across Wazuh alerts,
+        OpenCTI threat intel, and the Neo4j forensic graph, then optionally
+        synthesize a verdict + recommended actions via LangChain. Calls
+        <code>POST /soc/ioc-pivot</code> which proxies to the MCP tool
+        <code>ioc_pivot</code>. Each source is best-effort and the deterministic
+        verdict is always returned alongside the LLM synthesis for auditability.
+      </p>
+      <div class="grouping-row">
+        <input id="ioc-value" type="text" placeholder="IOC value (e.g. 198.51.100.7)" title="IOC value to pivot on" style="flex:2">
+        <select id="ioc-type" title="IOC type">
+          <option value="auto" selected>auto</option>
+          <option value="ip">ip</option>
+          <option value="domain">domain</option>
+          <option value="hash">hash</option>
+          <option value="user">user</option>
+        </select>
+      </div>
+      <div class="grouping-row">
+        <select id="ioc-time-range" title="Time range">
+          <option value="1h">1h</option>
+          <option value="6h">6h</option>
+          <option value="12h">12h</option>
+          <option value="24h" selected>24h</option>
+          <option value="7d">7d</option>
+          <option value="30d">30d</option>
+        </select>
+        <input id="ioc-min-level" type="number" min="1" max="15" step="1" value="5" title="Minimum rule level (1-15)">
+        <input id="ioc-limit" type="number" min="1" max="100" step="1" value="30" title="Max alerts to retrieve (1-100)">
+        <input id="ioc-max-hops" type="number" min="1" max="6" step="1" value="5" title="Neo4j attack-chain max hops (1-6)">
+      </div>
+      <div class="grouping-row">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+          <input id="ioc-include-opencti" type="checkbox" checked> include OpenCTI
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+          <input id="ioc-include-neo4j" type="checkbox" checked> include Neo4j
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+          <input id="ioc-include-llm" type="checkbox" checked> include LLM synthesis
+        </label>
+      </div>
+      <div class="grouping-row">
+        <button class="btn btn-primary" onclick="runIocPivot()">Run Pivot</button>
+        <button class="btn btn-secondary" onclick="loadIocPivotPreset('top_ip')" title="Take the top source IP from the most recent alerts">Use Top Source IP</button>
+        <button class="btn btn-secondary" onclick="loadIocPivotPreset('demo_ip')">Demo IP</button>
+        <button class="btn btn-secondary" onclick="loadIocPivotPreset('demo_user')">Demo User</button>
+      </div>
+      <div class="grouping-row" style="border-top:1px dashed var(--border);padding-top:10px;margin-top:6px">
+        <button class="btn btn-primary" onclick="runGlobalIocPivot()" title="Auto-discover top source IPs from recent alerts and pivot on each — no IOC entry required">🌐 Run Global Pivot</button>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+          Top N
+          <input id="ioc-global-n" type="number" min="1" max="10" step="1" value="3" style="width:60px" title="How many top source IPs to pivot on">
+        </label>
+        <span style="font-size:11px;color:var(--muted)">Discovers top source IPs from <code>/alerts/fetch</code> over the selected time range and runs pivot on each with the current form settings.</span>
+      </div>
+    </div>
+
+    <div class="grouping-card">
+      <h4>Pivot Verdict</h4>
+      <div id="ioc-verdict" class="empty-state" style="padding:14px">
+        <div class="icon">🧭</div>
+        Run a pivot to see verdict, confidence, severity, rationale, and recommended actions.
+      </div>
+    </div>
+  </div>
+
+  <div class="results-panel">
+    <h3>Source Evidence</h3>
+    <div id="ioc-sources" class="empty-state">
+      <div class="icon">🔗</div>
+      Source breakdowns (Wazuh, OpenCTI, Neo4j) will appear here after a pivot run.
+    </div>
+    <div id="ioc-raw" class="loop-results" style="margin-top:12px">Raw response log will appear here.</div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB: TIMELINE -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="tab-timeline" class="tab-panel">
+  <div class="timeline-input-row">
+    <input id="tl-incident-id" type="text" placeholder="INC-FORENSIC-001">
+    <button class="btn btn-primary" onclick="loadTimeline()">Load Timeline</button>
+  </div>
+  <div class="incident-suggestions" id="tl-suggestions">
+    <span style="font-size:12px;color:var(--muted);margin-right:4px">Quick pick:</span>
+  </div>
+  <div id="timeline-body">
+    <div class="empty-state">
+      <div class="icon">📅</div>
+      Enter an incident ID to load its forensic event timeline.
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB: GRAPH -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="tab-graph" class="tab-panel">
+  <div class="graph-controls">
+    <input id="g-incident-id" type="text" placeholder="INC-FORENSIC-001" value="INC-FORENSIC-001">
+    <button class="btn btn-primary" onclick="loadGraph()">Visualize</button>
+    <button class="btn btn-secondary" onclick="resetZoom()">Reset Zoom</button>
+    <span style="font-size:12px;color:var(--muted);margin-left:8px">
+      Drag nodes · Scroll to zoom · Hover for details
+    </span>
+  </div>
+  <div class="graph-legend">
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--node-alert)"></div> ALERT
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--node-ip)"></div> IP_ADDRESS
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--node-domain)"></div> DOMAIN
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--node-user)"></div> USER
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--node-workstation)"></div> WORKSTATION
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--node-process)"></div> PROCESS
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--node-file)"></div> FILE
+    </div>
+  </div>
+  <div id="graph-container" onclick="_graphContainerClick(event)">
+    <svg id="graph-svg"></svg>
+    <div class="graph-empty" id="graph-empty" style="cursor:pointer" title="Click to visualize">
+      <div class="icon">🕸️</div>
+      <span id="graph-empty-hint">Enter an incident ID above, then click <strong>Visualize</strong> — or click here</span>
+    </div>
+  </div>
+</div>
+
+<!-- Tooltip -->
+<div class="graph-tooltip" id="graph-tooltip"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- TAB: ALL CASES -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div id="tab-all-cases" class="tab-panel">
+  <div class="cases-toolbar">
+    <select id="ac-status" onchange="loadAllCases()">
+      <option value="">All Statuses</option>
+      <option value="open">Open</option>
+      <option value="assigned">Assigned</option>
+      <option value="investigating">Investigating</option>
+      <option value="escalated">Escalated</option>
+      <option value="resolved">Resolved</option>
+      <option value="closed">Closed</option>
+    </select>
+    <select id="ac-risk" onchange="loadAllCases()">
+      <option value="">All Risk Tiers</option>
+      <option value="critical">Critical</option>
+      <option value="high">High</option>
+      <option value="medium">Medium</option>
+      <option value="low">Low</option>
+    </select>
+    <button class="btn btn-primary btn-sm" onclick="loadAllCases()">Refresh</button>
+    <span class="cases-count" id="ac-count"></span>
+  </div>
+  <div id="ac-body">
+    <div class="empty-state"><div class="icon">📋</div>Click the tab to load all cases.</div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- JAVASCRIPT -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<script>
+// ─── Base URL (same origin, no hardcoded host) ──────────────────────────────
+const BASE = '';
+
+// ─── Colour maps ────────────────────────────────────────────────────────────
+const NODE_COLORS = {
+  ALERT:       '#ef4444',
+  IP_ADDRESS:  '#3b82f6',
+  DOMAIN:      '#f97316',
+  USER:        '#22c55e',
+  WORKSTATION: '#a855f7',
+  PROCESS:     '#eab308',
+  FILE:        '#94a3b8',
+};
+
+const SEV_BADGE = (s) => {
+  if (s >= 14) return 'badge-danger';
+  if (s >= 10) return 'badge-warn';
+  if (s >=  7) return 'badge-info';
+  return 'badge-ok';
+};
+
+// ─── HTTP helpers ────────────────────────────────────────────────────────────
+async function api(path) {
+  const resp = await fetch(BASE + path);
+  if (!resp.ok) {
+    const txt = await resp.text();
+    throw new Error(`HTTP ${resp.status}: ${txt.slice(0, 200)}`);
+  }
+  return resp.json();
+}
+
+async function apiPost(path, body) {
+  const resp = await fetch(BASE + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  if (!resp.ok) {
+    const txt = await resp.text();
+    throw new Error(`HTTP ${resp.status}: ${txt.slice(0, 300)}`);
+  }
+  return resp.json();
+}
+
+// ─── Health check ────────────────────────────────────────────────────────────
+async function checkHealth() {
+  try {
+    const h = await api('/cases/health');
+    const setDot = (id, lbl, val, name) => {
+      const dot = document.getElementById(id);
+      const label = document.getElementById(lbl);
+      dot.className = 'health-dot ' + (val ? 'ok' : 'err');
+      label.textContent = name + ': ' + (val ? 'connected' : 'unavailable');
+    };
+    setDot('dot-neo4j', 'lbl-neo4j', h.neo4j.connected, 'Neo4j');
+    setDot('dot-minio', 'lbl-minio', h.minio.connected, 'MinIO');
+  } catch (e) {
+    ['neo4j', 'minio'].forEach(s => {
+      document.getElementById(`dot-${s}`).className = 'health-dot err';
+      document.getElementById(`lbl-${s}`).textContent = s + ': error';
+    });
+  }
+}
+
+// ─── Tab switching ───────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+    if (btn.dataset.tab === 'all-cases') loadAllCases();
+  });
+});
+
+function switchTab(name) {
+  document.querySelector(`.tab-btn[data-tab="${name}"]`).click();
+}
+
+// ─── 9.4 enrichment loop ────────────────────────────────────────────────────
+function appendLoopResult(title, data) {
+  const out = document.getElementById('loop-results');
+  const ts = new Date().toLocaleTimeString();
+  const body = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  out.textContent += `\n\n[${ts}] ${title}\n${body}`;
+  out.scrollTop = out.scrollHeight;
+}
+
+function clearLoopResults() {
+  document.getElementById('loop-results').textContent = 'Running loop...';
+}
+
+function setLoopStepStatus(step, status, label) {
+  const el = document.getElementById(`loop-step-${step}`);
+  if (!el) return;
+  el.classList.remove('running', 'ok', 'error');
+  if (status) el.classList.add(status);
+  el.textContent = label || 'idle';
+}
+
+function resetLoopStepStatuses() {
+  [1, 2, 3, 4].forEach(step => setLoopStepStatus(step, '', 'idle'));
+}
+
+function setLoopIncidentSourceHint(text) {
+  const hint = document.getElementById('loop-incident-source');
+  if (!hint) return;
+  hint.textContent = text || '';
+}
+
+function extractIncidentIdFromPayload(payload) {
+  const queue = [payload];
+  const seen = new Set();
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current || typeof current !== 'object') continue;
+    if (seen.has(current)) continue;
+    seen.add(current);
+
+    if (Array.isArray(current)) {
+      current.slice(0, 100).forEach(item => queue.push(item));
+      continue;
+    }
+
+    for (const [key, value] of Object.entries(current)) {
+      if (typeof value === 'string') {
+        if ((key === 'incident_id' || key === 'incidentId') && value.trim()) {
+          return value.trim();
+        }
+        if ((key === 'name' || key === 'title' || key === 'external_id' || key === 'externalId')
+            && /^INC-[A-Z0-9-]+$/i.test(value.trim())) {
+          return value.trim();
+        }
+      } else if (value && typeof value === 'object') {
+        queue.push(value);
+      }
+    }
+  }
+  return '';
+}
+
+function applyLoopIncidentPrefill(payload, sourceLabel) {
+  const incidentId = extractIncidentIdFromPayload(payload);
+  if (!incidentId) return '';
+  const input = document.getElementById('loop-incident-id');
+  if (!input) return incidentId;
+  const prev = (input.value || '').trim();
+  if (prev !== incidentId) {
+    input.value = incidentId;
+    appendLoopResult('Step 4 prefill', `incident_id set to ${incidentId} from ${sourceLabel}`);
+  }
+  setLoopIncidentSourceHint(`Auto-filled from ${sourceLabel}`);
+  return incidentId;
+}
+
+async function loopSyncAlerts() {
+  setLoopStepStatus(1, 'running', 'running');
+  const hours = parseInt(document.getElementById('loop-sync-hours').value || '24', 10);
+  const minLevel = parseInt(document.getElementById('loop-sync-min').value || '5', 10);
+  const batch = parseInt(document.getElementById('loop-sync-batch').value || '200', 10);
+  const q = `hours=${encodeURIComponent(hours)}&min_level=${encodeURIComponent(minLevel)}&batch_size=${encodeURIComponent(batch)}`;
+  try {
+    const res = await apiPost(`/cases/opencti/sync-alerts?${q}`, {});
+    applyLoopIncidentPrefill(res, 'sync-alerts response');
+    appendLoopResult('Step 1 complete: OpenCTI alert sync', res);
+    setLoopStepStatus(1, 'ok', 'done');
+    return res;
+  } catch (e) {
+    setLoopStepStatus(1, 'error', 'failed');
+    appendLoopResult('Step 1 failed: OpenCTI alert sync', e.message || String(e));
+    throw e;
+  }
+}
+
+async function loopLookupIndicator() {
+  setLoopStepStatus(2, 'running', 'running');
+  const value = document.getElementById('loop-observable').value.trim();
+  if (!value) throw new Error('Observable value is required');
+  try {
+    const res = await api(`/cases/opencti/query-indicators?value=${encodeURIComponent(value)}&limit=25`);
+    appendLoopResult(`Step 2 complete: indicator lookup for ${value}`, res);
+    setLoopStepStatus(2, 'ok', 'done');
+    return res;
+  } catch (e) {
+    setLoopStepStatus(2, 'error', 'failed');
+    appendLoopResult('Step 2 failed: indicator lookup', e.message || String(e));
+    throw e;
+  }
+}
+
+async function loopLoadOpenCTICases() {
+  setLoopStepStatus(2, 'running', 'running');
+  try {
+    const res = await api('/cases/opencti/cases?hours=24&min_confidence=0&limit=15');
+    applyLoopIncidentPrefill(res, 'OpenCTI cases list');
+    appendLoopResult('OpenCTI recent cases', res);
+    setLoopStepStatus(2, 'ok', 'done');
+    return res;
+  } catch (e) {
+    setLoopStepStatus(2, 'error', 'failed');
+    appendLoopResult('Step 2 failed: OpenCTI cases list', e.message || String(e));
+    throw e;
+  }
+}
+
+async function loopLoadAttackChain() {
+  setLoopStepStatus(3, 'running', 'running');
+  const value = document.getElementById('loop-observable').value.trim();
+  const hops = parseInt(document.getElementById('loop-chain-hops').value || '5', 10);
+  if (!value) throw new Error('Observable value is required for attack-chain pivot');
+  try {
+    const res = await api(`/cases/neo4j/attack-chain?ip=${encodeURIComponent(value)}&max_hops=${encodeURIComponent(hops)}`);
+    appendLoopResult(`Step 3 complete: Neo4j attack-chain pivot for ${value}`, res);
+    setLoopStepStatus(3, 'ok', 'done');
+    return res;
+  } catch (e) {
+    setLoopStepStatus(3, 'error', 'failed');
+    appendLoopResult('Step 3 failed: Neo4j attack-chain', e.message || String(e));
+    throw e;
+  }
+}
+
+async function loopEscalatePhase3() {
+  setLoopStepStatus(4, 'running', 'running');
+  const incidentId = document.getElementById('loop-incident-id').value.trim();
+  const riskTier = document.getElementById('loop-risk-tier').value;
+  const useCase = document.getElementById('loop-use-case').value;
+  const autoApprove = document.getElementById('loop-auto-approve').checked;
+  if (!incidentId) throw new Error('incident_id is required for escalation');
+
+  const payload = {
+    incident_id: incidentId,
+    risk_tier: riskTier,
+    use_case: useCase,
+    auto_approve: autoApprove,
+    action_args: {
+      ip: document.getElementById('loop-observable').value.trim() || undefined,
+    },
+  };
+
+  try {
+    const res = await apiPost('/phase3/proxy', payload);
+    appendLoopResult(`Step 4 complete: escalated ${incidentId} to Phase 3`, res);
+    setLoopStepStatus(4, 'ok', 'done');
+    return res;
+  } catch (e) {
+    setLoopStepStatus(4, 'error', 'failed');
+    appendLoopResult('Step 4 failed: escalation to Phase 3', e.message || String(e));
+    throw e;
+  }
+}
+
+async function runFullEnrichmentLoop() {
+  clearLoopResults();
+  resetLoopStepStatuses();
+  setLoopIncidentSourceHint('');
+  try {
+    await loopSyncAlerts();
+    await loopLookupIndicator();
+    await loopLoadAttackChain();
+    await loopEscalatePhase3();
+    appendLoopResult('9.4 enrichment loop status', 'SUCCESS');
+  } catch (e) {
+    appendLoopResult('9.4 enrichment loop status', `FAILED: ${e.message}`);
+  }
+}
+
+// ─── Incident grouping tab ─────────────────────────────────────────────────
+const GROUPING_DEMO_ALERTS = [
+  {
+    timestamp: '2026-01-01T10:00:00Z',
+    rule: { id: '5710', level: 10, description: 'Rule 5710' },
+    agent: { id: '001', name: 'agent-001' },
+    data: { srcip: '203.0.113.5' },
+  },
+  {
+    timestamp: '2026-01-01T10:04:00Z',
+    rule: { id: '5710', level: 10, description: 'Rule 5710' },
+    agent: { id: '001', name: 'agent-001' },
+    data: { srcip: '203.0.113.5' },
+  },
+  {
+    timestamp: '2026-01-01T10:07:00Z',
+    rule: { id: '5710', level: 10, description: 'Rule 5710' },
+    agent: { id: '002', name: 'agent-002' },
+    data: { srcip: '203.0.113.5' },
+  },
+  {
+    timestamp: '2026-01-01T11:00:00Z',
+    rule: { id: '9200', level: 7, description: 'Rule 9200' },
+    agent: { id: '003', name: 'agent-003' },
+    data: { srcip: '198.51.100.7' },
+  },
+];
+
+function setGroupingStatus(kind, label) {
+  const pill = document.getElementById('grouping-status-pill');
+  if (!pill) return;
+  pill.classList.remove('ok', 'wait', 'err');
+  if (kind) pill.classList.add(kind);
+  pill.textContent = label || 'idle';
+}
+
+function appendGroupingRawLog(title, data) {
+  const out = document.getElementById('grouping-raw');
+  const ts = new Date().toLocaleTimeString();
+  const body = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  out.textContent += `\n\n[${ts}] ${title}\n${body}`;
+  out.scrollTop = out.scrollHeight;
+}
+
+function clearGroupingRawLog() {
+  const out = document.getElementById('grouping-raw');
+  out.textContent = 'Running incident grouping request...';
+}
+
+function loadIncidentGroupingDemoAlerts(mode = 'mixed') {
+  const area = document.getElementById('grouping-alerts-json');
+  const requireConfirm = document.getElementById('grouping-require-confirmation');
+  const incidentInput = document.getElementById('grouping-incident-id');
+  if (!area) return;
+  area.value = JSON.stringify(GROUPING_DEMO_ALERTS, null, 2);
+  if (mode === 'pending') {
+    if (requireConfirm) requireConfirm.checked = true;
+    if (incidentInput) incidentInput.value = 'INC-demo-pending';
+  } else {
+    if (requireConfirm) requireConfirm.checked = false;
+    if (incidentInput) incidentInput.value = 'INC-demo-4-alert';
+  }
+}
+
+function toGroupingAlertFromLiveAlert(alert) {
+  const ts = (alert && alert.timestamp) ? String(alert.timestamp) : '';
+  const ruleId = (alert && alert.rule_id) ? String(alert.rule_id) : '';
+  const ruleLevelRaw = alert ? alert.rule_level : 0;
+  const ruleLevel = Number.isFinite(Number(ruleLevelRaw)) ? Number(ruleLevelRaw) : 0;
+  const ruleDescription = (alert && alert.rule_description) ? String(alert.rule_description) : '';
+  const agentId = (alert && alert.agent_id) ? String(alert.agent_id) : '';
+  const agentName = (alert && alert.agent_name) ? String(alert.agent_name) : '';
+  const srcIp = (alert && alert.src_ip) ? String(alert.src_ip) : '';
+  const dstIp = (alert && alert.dest_ip) ? String(alert.dest_ip) : '';
+
+  return {
+    timestamp: ts,
+    rule: {
+      id: ruleId,
+      level: ruleLevel,
+      description: ruleDescription,
+    },
+    agent: {
+      id: agentId,
+      name: agentName,
+    },
+    data: {
+      srcip: srcIp,
+      dstip: dstIp,
+    },
+  };
+}
+
+async function loadIncidentGroupingLiveAlerts() {
+  const area = document.getElementById('grouping-alerts-json');
+  if (!area) return;
+
+  const limitRaw = (document.getElementById('grouping-live-limit').value || '50').trim();
+  const level = (document.getElementById('grouping-live-level').value || '5+').trim() || '5+';
+  const query = (document.getElementById('grouping-live-query').value || '').trim();
+  const limitNum = Number.parseInt(limitRaw, 10);
+  const limit = Number.isFinite(limitNum) ? Math.max(1, Math.min(200, limitNum)) : 50;
+
+  const payload = {
+    time_range: '24h',
+    level,
+    limit,
+  };
+  if (query) payload.query = query;
+
+  try {
+    setGroupingStatus('wait', 'loading-live');
+    clearGroupingRawLog();
+    appendGroupingRawLog('Live alert fetch request', payload);
+
+    const res = await apiPost('/alerts/fetch', payload);
+    const liveAlerts = Array.isArray(res.alerts) ? res.alerts : [];
+    const mapped = liveAlerts.map(toGroupingAlertFromLiveAlert);
+
+    if (!mapped.length) {
+      throw new Error('No live alerts returned for current filters');
+    }
+
+    area.value = JSON.stringify(mapped, null, 2);
+
+    const incidentInput = document.getElementById('grouping-incident-id');
+    if (incidentInput && !(incidentInput.value || '').trim()) {
+      incidentInput.value = `INC-live-${new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14)}`;
+    }
+
+    appendGroupingRawLog('Live alert fetch response', {
+      total: res.total,
+      loaded_into_grouping_json: mapped.length,
+    });
+    setGroupingStatus('ok', `live-loaded:${mapped.length}`);
+  } catch (e) {
+    setGroupingStatus('err', 'live-load-failed');
+    appendGroupingRawLog('Live alert fetch failed', e.message || String(e));
+  }
+}
+
+function parseGroupingAlertsJson() {
+  const raw = (document.getElementById('grouping-alerts-json').value || '').trim();
+  if (!raw) throw new Error('Alert JSON is required');
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    throw new Error(`Invalid alert JSON: ${e.message}`);
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error('Alert JSON must be an array of alert objects');
+  }
+  if (!parsed.length) {
+    throw new Error('Alert JSON array is empty');
+  }
+  return parsed;
+}
+
+function normalizeGroupingIncidentId() {
+  const incidentId = (document.getElementById('grouping-incident-id').value || '').trim();
+  if (!incidentId) throw new Error('incident_id is required');
+  return incidentId;
+}
+
+function groupingRepSummary(group) {
+  const rep = (group && group.representative_alert) || {};
+  const ruleId = (((rep.rule || {}).id) || '').toString();
+  const ruleDesc = (((rep.rule || {}).description) || '').toString();
+  const srcip = (((rep.data || {}).srcip) || rep.srcip || '').toString();
+  const agentId = (((rep.agent || {}).id) || '').toString();
+  const parts = [];
+  if (ruleId || ruleDesc) parts.push(`rule=${ruleId || '?'} ${ruleDesc}`.trim());
+  if (srcip) parts.push(`srcip=${srcip}`);
+  if (agentId) parts.push(`agent=${agentId}`);
+  return parts.join(' · ') || 'n/a';
+}
+
+function renderGroupingResult(body) {
+  const root = document.getElementById('grouping-render');
+  const summary = body.summary || {};
+  const confirmation = body.confirmation || {};
+  const groups = Array.isArray(body.groups) ? body.groups : [];
+
+  const status = escHtml(body.workflow_status || 'unknown');
+  const decision = escHtml(confirmation.decision || 'n/a');
+  const groupCount = summary.group_count ?? groups.length;
+  const dedup = summary.deduplicated_alerts ?? 'n/a';
+  const totalAlerts = summary.total_alerts ?? 'n/a';
+  const incidentId = escHtml((body.incident_id || document.getElementById('grouping-incident-id').value || '').toString());
+
+  const rows = groups.map(g => {
+    const rules = (g.rule_ids || []).map(v => `<span class="grouping-inline-code">${escHtml(v)}</span>`).join(', ') || '—';
+    const ips = (g.source_ips || []).map(v => `<span class="grouping-inline-code">${escHtml(v)}</span>`).join(', ') || '—';
+    const agents = (g.agent_ids || []).map(v => `<span class="grouping-inline-code">${escHtml(v)}</span>`).join(', ') || '—';
+    return `<tr>
+      <td class="grouping-inline-code">${escHtml(g.group_id || 'n/a')}</td>
+      <td>${escHtml(String(g.alert_count ?? 0))}</td>
+      <td>${escHtml(String(g.confidence ?? 'n/a'))}</td>
+      <td>${rules}</td>
+      <td>${ips}</td>
+      <td>${agents}</td>
+      <td>${escHtml(groupingRepSummary(g))}</td>
+      <td>
+        <div>${escHtml(g.first_seen || 'n/a')}</div>
+        <div style="color:var(--muted)">→ ${escHtml(g.last_seen || 'n/a')}</div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const noGroups = '<div class="empty-state" style="margin:0"><div class="icon">📭</div>No groups returned.</div>';
+  const table = groups.length ? `
+    <div class="grouping-table-wrap">
+      <table class="grouping-table">
+        <thead>
+          <tr>
+            <th>Group</th><th>Alerts</th><th>Confidence</th><th>Rule IDs</th><th>Source IPs</th><th>Agents</th><th>Representative</th><th>Window</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>` : noGroups;
+
+  root.innerHTML = `
+    <div class="grouping-result-grid">
+      <div class="grouping-stat"><div class="grouping-stat-label">Workflow Status</div><div class="grouping-stat-value">${status}</div></div>
+      <div class="grouping-stat"><div class="grouping-stat-label">Confirmation</div><div class="grouping-stat-value">${decision}</div></div>
+      <div class="grouping-stat"><div class="grouping-stat-label">Total Alerts</div><div class="grouping-stat-value">${escHtml(String(totalAlerts))}</div></div>
+      <div class="grouping-stat"><div class="grouping-stat-label">Groups</div><div class="grouping-stat-value">${escHtml(String(groupCount))}</div></div>
+      <div class="grouping-stat"><div class="grouping-stat-label">Deduplicated Alerts</div><div class="grouping-stat-value">${escHtml(String(dedup))}</div></div>
+      <div class="grouping-stat"><div class="grouping-stat-label">Incident</div><div class="grouping-stat-value grouping-inline-code">${incidentId || 'n/a'}</div></div>
+    </div>
+    ${table}
+  `;
+}
+
+async function runIncidentGrouping() {
+  try {
+    const incidentId = normalizeGroupingIncidentId();
+    const threshold = parseFloat(document.getElementById('grouping-threshold').value || '0.65');
+    const windowMinutes = parseInt(document.getElementById('grouping-window').value || '120', 10);
+    const requireConfirmation = !!document.getElementById('grouping-require-confirmation').checked;
+    const autoApprove = !!document.getElementById('grouping-auto-approve').checked;
+    const alerts = parseGroupingAlertsJson();
+
+    const payload = {
+      incident_id: incidentId,
+      confidence_threshold: Number.isFinite(threshold) ? threshold : 0.65,
+      window_minutes: Number.isFinite(windowMinutes) ? windowMinutes : 120,
+      require_analyst_confirmation: requireConfirmation,
+      auto_approve: autoApprove,
+      alerts,
+    };
+
+    setGroupingStatus('wait', 'running');
+    clearGroupingRawLog();
+    appendGroupingRawLog('Run request payload', payload);
+
+    const res = await apiPost('/phase3/incident-grouping/run', payload);
+    renderGroupingResult(res);
+    appendGroupingRawLog('Run response', res);
+    const isPending = (res.workflow_status || '').toLowerCase().includes('pending');
+    setGroupingStatus(isPending ? 'wait' : 'ok', isPending ? 'pending' : 'done');
+    return res;
+  } catch (e) {
+    setGroupingStatus('err', 'failed');
+    appendGroupingRawLog('Run failed', e.message || String(e));
+    return null;
+  }
+}
+
+async function checkIncidentGroupingPending() {
+  try {
+    const incidentId = normalizeGroupingIncidentId();
+    setGroupingStatus('wait', 'checking');
+    appendGroupingRawLog('Checking pending state', { incident_id: incidentId });
+
+    const res = await api(`/phase3/incident-grouping/pending/${encodeURIComponent(incidentId)}`);
+    renderGroupingResult(res);
+    appendGroupingRawLog('Pending response', res);
+    setGroupingStatus('wait', 'pending');
+    return res;
+  } catch (e) {
+    setGroupingStatus('err', 'failed');
+    appendGroupingRawLog('Pending check failed', e.message || String(e));
+    return null;
+  }
+}
+
+async function resumeIncidentGrouping(decision) {
+  try {
+    const incidentId = normalizeGroupingIncidentId();
+    const actor = (document.getElementById('grouping-actor').value || '').trim() || 'soc-analyst';
+    const payload = { decision, actor };
+
+    setGroupingStatus('wait', `resume:${decision}`);
+    appendGroupingRawLog('Resume request', { incident_id: incidentId, ...payload });
+
+    const res = await apiPost(`/phase3/incident-grouping/pending/${encodeURIComponent(incidentId)}/resume`, payload);
+    renderGroupingResult(res);
+    appendGroupingRawLog('Resume response', res);
+    setGroupingStatus('ok', decision === 'approved' ? 'approved' : 'rejected');
+    return res;
+  } catch (e) {
+    setGroupingStatus('err', 'failed');
+    appendGroupingRawLog('Resume failed', e.message || String(e));
+    return null;
+  }
+}
+
+async function runIncidentGroupingDemoFlow() {
+  clearGroupingRawLog();
+  appendGroupingRawLog('Demo flow', 'Starting one-click sequence: immediate -> pending -> check -> resume approved');
+
+  loadIncidentGroupingDemoAlerts('mixed');
+  const runImmediate = await runIncidentGrouping();
+  if (!runImmediate) {
+    appendGroupingRawLog('Demo flow', 'Stopped: immediate grouping step failed');
+    return;
+  }
+
+  loadIncidentGroupingDemoAlerts('pending');
+  const autoApprove = document.getElementById('grouping-auto-approve');
+  if (autoApprove) autoApprove.checked = false;
+
+  const runPending = await runIncidentGrouping();
+  if (!runPending) {
+    appendGroupingRawLog('Demo flow', 'Stopped: pending grouping step failed');
+    return;
+  }
+
+  const pendingState = await checkIncidentGroupingPending();
+  if (!pendingState) {
+    appendGroupingRawLog('Demo flow', 'Stopped: pending lookup step failed');
+    return;
+  }
+
+  const resumed = await resumeIncidentGrouping('approved');
+  if (!resumed) {
+    appendGroupingRawLog('Demo flow', 'Stopped: resume step failed');
+    return;
+  }
+
+  appendGroupingRawLog('Demo flow', 'Completed successfully');
+}
+
+// ─── Investigation Playbooks tab ───────────────────────────────────────────
+const PLAYBOOK_RISK_BADGE = {
+  low:      'badge-ok',
+  medium:   'badge-info',
+  high:     'badge-warn',
+  critical: 'badge-danger',
+};
+
+function setPlaybookStatus(kind, label) {
+  const pill = document.getElementById('playbook-status-pill');
+  if (!pill) return;
+  pill.classList.remove('ok', 'wait', 'err');
+  if (kind) pill.classList.add(kind);
+  pill.textContent = label || 'idle';
+}
+
+function appendPlaybookRawLog(title, data) {
+  const out = document.getElementById('playbook-raw');
+  if (!out) return;
+  const ts = new Date().toLocaleTimeString();
+  const body = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  out.textContent += `\n\n[${ts}] ${title}\n${body}`;
+  out.scrollTop = out.scrollHeight;
+}
+
+function clearPlaybookRawLog() {
+  const out = document.getElementById('playbook-raw');
+  if (out) out.textContent = 'Running playbook request...';
+}
+
+function buildPlaybookEvidence() {
+  const ev = {
+    src_ip:    (document.getElementById('pb-ev-src-ip').value || '').trim(),
+    dst_ip:    (document.getElementById('pb-ev-dst-ip').value || '').trim(),
+    agent_id:  (document.getElementById('pb-ev-agent-id').value || '').trim(),
+    user:      (document.getElementById('pb-ev-user').value || '').trim(),
+    file_path: (document.getElementById('pb-ev-file-path').value || '').trim(),
+    file_hash: (document.getElementById('pb-ev-file-hash').value || '').trim(),
+    domain:    (document.getElementById('pb-ev-domain').value || '').trim(),
+  };
+  Object.keys(ev).forEach(k => { if (!ev[k]) delete ev[k]; });
+  return ev;
+}
+
+function buildPlaybookPayload() {
+  const incidentId = (document.getElementById('playbook-incident-id').value || '').trim() || 'INC-pb-demo';
+  const playbook   = (document.getElementById('playbook-name').value || '').trim() || 'brute_force';
+  const timeRange  = (document.getElementById('playbook-time-range').value || '').trim() || '24h';
+  const autoApprove = !!document.getElementById('playbook-auto-approve').checked;
+
+  const payload = {
+    incident_id: incidentId,
+    playbook,
+    time_range: timeRange,
+    evidence: buildPlaybookEvidence(),
+    auto_approve: autoApprove,
+  };
+
+  const overridesRaw = (document.getElementById('pb-threshold-overrides').value || '').trim();
+  if (overridesRaw) {
+    try {
+      const parsed = JSON.parse(overridesRaw);
+      if (parsed && typeof parsed === 'object') payload.threshold_overrides = parsed;
+    } catch (e) {
+      throw new Error(`threshold_overrides is not valid JSON: ${e.message}`);
+    }
+  }
+  return payload;
+}
+
+function renderPlaybookResult(res) {
+  const root = document.getElementById('playbook-render');
+  if (!root) return;
+  if (!res || typeof res !== 'object') {
+    root.className = 'empty-state';
+    root.innerHTML = '<div class="icon">📘</div>No result.';
+    return;
+  }
+
+  const status   = res.workflow_status || 'unknown';
+  const tier     = (res.risk_tier || 'unknown').toLowerCase();
+  const tierCls  = PLAYBOOK_RISK_BADGE[tier] || 'badge-info';
+  const incident = res.incident_id || 'n/a';
+  const playbook = res.playbook || 'n/a';
+  const decision = (res.confirmation && res.confirmation.decision) || 'n/a';
+
+  const rationale = Array.isArray(res.rationale) ? res.rationale : [];
+  const rationaleHtml = rationale.length
+    ? `<ul style="margin:8px 0 0 18px">${rationale.map(r => `<li>${escHtml(String(r))}</li>`).join('')}</ul>`
+    : '<div class="muted" style="margin-top:6px">No rationale provided.</div>';
+
+  const signals = (res.signals && typeof res.signals === 'object') ? res.signals : {};
+  const signalRows = Object.keys(signals).map(k =>
+    `<tr><td class="grouping-inline-code">${escHtml(k)}</td><td>${escHtml(JSON.stringify(signals[k]))}</td></tr>`
+  ).join('');
+  const signalsHtml = signalRows
+    ? `<table class="grouping-table" style="margin-top:6px"><thead><tr><th>Signal</th><th>Value</th></tr></thead><tbody>${signalRows}</tbody></table>`
+    : '<div class="muted" style="margin-top:6px">No signals.</div>';
+
+  const action = (res.proposed_action && typeof res.proposed_action === 'object') ? res.proposed_action : {};
+  const actionTool     = action.action_tool || action.proposed_tool || 'n/a';
+  const verifyTool     = action.verify_tool || 'n/a';
+  const rollbackTool   = action.rollback_tool || 'n/a';
+  const actionArgs     = action.action_args || action.args || {};
+  const actionHtml = `
+    <div class="grouping-stat-grid" style="margin-top:6px">
+      <div class="grouping-stat"><div class="grouping-stat-label">Action Tool</div><div class="grouping-stat-value grouping-inline-code">${escHtml(String(actionTool))}</div></div>
+      <div class="grouping-stat"><div class="grouping-stat-label">Verify Tool</div><div class="grouping-stat-value grouping-inline-code">${escHtml(String(verifyTool))}</div></div>
+      <div class="grouping-stat"><div class="grouping-stat-label">Rollback Tool</div><div class="grouping-stat-value grouping-inline-code">${escHtml(String(rollbackTool))}</div></div>
+    </div>
+    <details style="margin-top:6px"><summary>Action arguments</summary>
+      <pre class="loop-results" style="margin-top:6px">${escHtml(JSON.stringify(actionArgs, null, 2))}</pre>
+    </details>
+  `;
+
+  const steps = Array.isArray(res.steps) ? res.steps : [];
+  const stepsHtml = steps.length
+    ? `<ol style="margin:6px 0 0 18px">${steps.map(s => `<li class="grouping-inline-code">${escHtml(String(s))}</li>`).join('')}</ol>`
+    : '<div class="muted" style="margin-top:6px">No step trace.</div>';
+
+  const evidence = res.evidence || {};
+
+  root.className = 'grouping-render';
+  root.innerHTML = `
+    <div class="grouping-stat-grid">
+      <div class="grouping-stat"><div class="grouping-stat-label">Workflow Status</div><div class="grouping-stat-value">${escHtml(status)}</div></div>
+      <div class="grouping-stat"><div class="grouping-stat-label">Risk Tier</div><div class="grouping-stat-value"><span class="badge ${tierCls}">${escHtml(tier)}</span></div></div>
+      <div class="grouping-stat"><div class="grouping-stat-label">Playbook</div><div class="grouping-stat-value grouping-inline-code">${escHtml(playbook)}</div></div>
+      <div class="grouping-stat"><div class="grouping-stat-label">Incident</div><div class="grouping-stat-value grouping-inline-code">${escHtml(incident)}</div></div>
+      <div class="grouping-stat"><div class="grouping-stat-label">Confirmation</div><div class="grouping-stat-value">${escHtml(String(decision))}</div></div>
+    </div>
+    <h4 style="margin-top:12px">Rationale</h4>
+    ${rationaleHtml}
+    <h4 style="margin-top:12px">Signals</h4>
+    ${signalsHtml}
+    <h4 style="margin-top:12px">Proposed Action</h4>
+    ${actionHtml}
+    <h4 style="margin-top:12px">Steps</h4>
+    ${stepsHtml}
+    <h4 style="margin-top:12px">Evidence</h4>
+    <details><summary>Show evidence JSON</summary>
+      <pre class="loop-results" style="margin-top:6px">${escHtml(JSON.stringify(evidence, null, 2))}</pre>
+    </details>
+  `;
+}
+
+async function loadPlaybookList() {
+  try {
+    appendPlaybookRawLog('Listing playbooks', '/phase3/playbooks/list');
+    const res = await api('/phase3/playbooks/list');
+    appendPlaybookRawLog('Playbook list response', res);
+    const list = (res && Array.isArray(res.playbooks)) ? res.playbooks
+                : (Array.isArray(res) ? res : null);
+    if (list && list.length) {
+      const sel = document.getElementById('playbook-name');
+      const current = sel.value;
+      sel.innerHTML = list.map(p => {
+        const name = (typeof p === 'string') ? p : (p.name || p.id || '');
+        return name ? `<option value="${escHtml(name)}">${escHtml(name)}</option>` : '';
+      }).join('');
+      if (Array.from(sel.options).some(o => o.value === current)) sel.value = current;
+    }
+  } catch (e) {
+    appendPlaybookRawLog('Playbook list failed', e.message || String(e));
+  }
+}
+
+async function runPlaybook() {
+  try {
+    const payload = buildPlaybookPayload();
+    setPlaybookStatus('wait', 'running');
+    clearPlaybookRawLog();
+    appendPlaybookRawLog('Run request payload', payload);
+
+    const res = await apiPost('/phase3/playbooks/run', payload);
+    renderPlaybookResult(res);
+    appendPlaybookRawLog('Run response', res);
+    const status = (res.workflow_status || '').toLowerCase();
+    const isPending = status.includes('pending');
+    setPlaybookStatus(isPending ? 'wait' : 'ok', isPending ? 'pending' : (res.risk_tier || 'done'));
+    return res;
+  } catch (e) {
+    setPlaybookStatus('err', 'failed');
+    appendPlaybookRawLog('Run failed', e.message || String(e));
+    return null;
+  }
+}
+
+async function checkPlaybookPending() {
+  try {
+    const incidentId = (document.getElementById('playbook-incident-id').value || '').trim() || 'INC-pb-demo';
+    setPlaybookStatus('wait', 'checking');
+    appendPlaybookRawLog('Checking pending state', { incident_id: incidentId });
+
+    const res = await api(`/phase3/playbooks/pending/${encodeURIComponent(incidentId)}`);
+    renderPlaybookResult(res);
+    appendPlaybookRawLog('Pending response', res);
+    setPlaybookStatus('wait', 'pending');
+    return res;
+  } catch (e) {
+    setPlaybookStatus('err', 'failed');
+    appendPlaybookRawLog('Pending check failed', e.message || String(e));
+    return null;
+  }
+}
+
+async function resumePlaybook(decision) {
+  try {
+    const incidentId = (document.getElementById('playbook-incident-id').value || '').trim() || 'INC-pb-demo';
+    const actor = (document.getElementById('playbook-actor').value || '').trim() || 'soc-analyst';
+    const payload = { decision, actor };
+    setPlaybookStatus('wait', `resume:${decision}`);
+    appendPlaybookRawLog('Resume request', { incident_id: incidentId, ...payload });
+
+    const res = await apiPost(`/phase3/playbooks/pending/${encodeURIComponent(incidentId)}/resume`, payload);
+    renderPlaybookResult(res);
+    appendPlaybookRawLog('Resume response', res);
+    setPlaybookStatus('ok', decision === 'approved' ? 'approved' : 'rejected');
+    return res;
+  } catch (e) {
+    setPlaybookStatus('err', 'failed');
+    appendPlaybookRawLog('Resume failed', e.message || String(e));
+    return null;
+  }
+}
+
+async function runPlaybookDemoFlow() {
+  clearPlaybookRawLog();
+  appendPlaybookRawLog('Demo flow', 'Starting one-click sequence: forced-high run -> check pending -> resume approved');
+
+  // Pre-fill demo evidence and force-pending overrides
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set('playbook-incident-id', 'INC-pb-demo');
+  document.getElementById('playbook-name').value = 'brute_force';
+  set('playbook-time-range', '24h');
+  set('pb-ev-src-ip', '203.0.113.5');
+  set('pb-ev-dst-ip', '198.51.100.42');
+  set('pb-ev-agent-id', '002');
+  set('pb-ev-user', 'jdoe');
+  set('pb-ev-file-path', '');
+  set('pb-ev-file-hash', '');
+  set('pb-ev-domain', '');
+  set('pb-threshold-overrides', '{"medium": -1, "high": -1}');
+  document.getElementById('playbook-auto-approve').checked = false;
+
+  const runRes = await runPlaybook();
+  if (!runRes) {
+    appendPlaybookRawLog('Demo flow', 'Stopped: run step failed');
+    return;
+  }
+
+  const status = (runRes.workflow_status || '').toLowerCase();
+  if (!status.includes('pending')) {
+    appendPlaybookRawLog('Demo flow', `Completed without pending state (status=${status})`);
+    return;
+  }
+
+  const pendingRes = await checkPlaybookPending();
+  if (!pendingRes) {
+    appendPlaybookRawLog('Demo flow', 'Stopped: pending lookup failed');
+    return;
+  }
+
+  const resumed = await resumePlaybook('approved');
+  if (!resumed) {
+    appendPlaybookRawLog('Demo flow', 'Stopped: resume step failed');
+    return;
+  }
+
+  appendPlaybookRawLog('Demo flow', 'Completed successfully');
+}
+
+// ─── MITRE ATT&CK mapping tab ──────────────────────────────────────────────
+const MITRE_PRESETS = {
+  auth:    { query: 'ssh OR "failed password" OR brute', min_level: 5, time_range: '24h' },
+  web:     { query: 'sqlmap OR nikto OR wp-login OR "web attack"', min_level: 5, time_range: '24h' },
+  malware: { query: 'malware OR virustotal OR rootkit OR trojan', min_level: 7, time_range: '7d' },
+  lateral: { query: 'rdp OR "remote desktop" OR psexec OR lateral', min_level: 5, time_range: '7d' },
+};
+
+function setMitreStatus(kind, label) {
+  const pill = document.getElementById('mitre-status-pill');
+  if (!pill) return;
+  pill.classList.remove('ok', 'wait', 'err');
+  if (kind) pill.classList.add(kind);
+  pill.textContent = label || 'idle';
+}
+
+function appendMitreRawLog(title, data) {
+  const out = document.getElementById('mitre-raw');
+  if (!out) return;
+  const ts = new Date().toLocaleTimeString();
+  const body = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  out.textContent += `\n\n[${ts}] ${title}\n${body}`;
+  out.scrollTop = out.scrollHeight;
+}
+
+function clearMitreRawLog() {
+  const out = document.getElementById('mitre-raw');
+  if (out) out.textContent = 'Running MITRE ATT&CK mapping request...';
+}
+
+function runMitreMapPreset(name) {
+  const preset = MITRE_PRESETS[name];
+  if (!preset) return;
+  const tr = document.getElementById('mitre-time-range');
+  const ml = document.getElementById('mitre-min-level');
+  const q  = document.getElementById('mitre-query');
+  if (tr && preset.time_range) tr.value = preset.time_range;
+  if (ml && preset.min_level)  ml.value = preset.min_level;
+  if (q)  q.value = preset.query || '';
+  return runMitreMap();
+}
+
+function mitreConfidenceColor(c) {
+  const v = Number(c) || 0;
+  if (v >= 0.85) return '#ef4444';
+  if (v >= 0.65) return '#f97316';
+  if (v >= 0.45) return '#f59e0b';
+  return '#22c55e';
+}
+
+function renderMitreSummary(data, meta) {
+  const el = document.getElementById('mitre-summary');
+  if (!el) return;
+  const mm = (data && data.mapping_method) || {};
+  const top = data && (data.top_confidence != null ? data.top_confidence : (data.technique_mappings && data.technique_mappings[0] && data.technique_mappings[0].confidence));
+  const overall = (mm.overall_rationale || '').toString().trim();
+  const engineColor = mm.engine === 'langchain' ? '#22c55e' : '#94a3b8';
+  el.classList.remove('empty-state');
+  el.style.padding = '14px';
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+      <div><div style="font-size:11px;color:var(--muted)">Engine</div><div style="font-weight:600;color:${engineColor}">${escHtml(mm.engine || '-')}</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">Model</div><div style="font-weight:600">${escHtml(mm.model || '-')}</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">Alerts analyzed</div><div style="font-weight:600">${escHtml(data.total_alerts_analyzed != null ? data.total_alerts_analyzed : '-')}</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">Techniques</div><div style="font-weight:600">${escHtml(data.technique_count != null ? data.technique_count : (data.technique_mappings || []).length)}</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">Top confidence</div><div style="font-weight:600;color:${mitreConfidenceColor(top)}">${top != null ? Number(top).toFixed(2) : '-'}</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">Time range</div><div style="font-weight:600">${escHtml(meta.time_range || '-')}</div></div>
+    </div>
+    <div style="margin-top:10px;font-size:12px;color:var(--muted)">Status: ${escHtml(mm.status || '-')}</div>
+    ${overall ? `<div style="margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02);font-size:12px;line-height:1.5"><strong>Overall rationale:</strong> ${escHtml(overall)}</div>` : ''}
+  `;
+}
+
+function renderMitreTechniques(data) {
+  const el = document.getElementById('mitre-render');
+  if (!el) return;
+  const mappings = (data && data.technique_mappings) || [];
+  if (!mappings.length) {
+    el.classList.add('empty-state');
+    el.innerHTML = `<div class="icon">∅</div>No techniques mapped (no matching alerts in the selected window).`;
+    return;
+  }
+  el.classList.remove('empty-state');
+  const samples = (data && data.sample_alerts) || [];
+  const next = (data && data.recommended_next_steps) || [];
+  const cards = mappings.map(t => {
+    const conf = Number(t.confidence) || 0;
+    const pct = Math.round(conf * 100);
+    const color = mitreConfidenceColor(conf);
+    const idLink = (t.technique_id || '').match(/^T\d+/) ? `https://attack.mitre.org/techniques/${(t.technique_id || '').replace('.', '/')}` : '#';
+    return `
+      <div style="border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--card);margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <a href="${escHtml(idLink)}" target="_blank" style="font-family:ui-monospace,Menlo,monospace;font-weight:700;color:#60a5fa;text-decoration:none">${escHtml(t.technique_id || '-')}</a>
+            <span style="font-weight:600">${escHtml(t.technique_name || '-')}</span>
+            ${t.tactic ? `<span class="grouping-pill">${escHtml(t.tactic)}</span>` : ''}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:11px;color:var(--muted)">supporting alerts: ${escHtml(t.supporting_alert_count != null ? t.supporting_alert_count : '-')}</span>
+            <span style="font-weight:700;color:${color}">${pct}%</span>
+          </div>
+        </div>
+        <div style="margin-top:8px;height:6px;border-radius:4px;background:rgba(255,255,255,0.06);overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${color}"></div>
+        </div>
+        ${t.rationale ? `<div style="margin-top:10px;font-size:12px;line-height:1.5;color:#cbd5e1">${escHtml(t.rationale)}</div>` : ''}
+        ${Array.isArray(t.evidence_alert_indexes) && t.evidence_alert_indexes.length ? `<div style="margin-top:6px;font-size:11px;color:var(--muted)">evidence indexes: ${escHtml(t.evidence_alert_indexes.join(', '))}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+  const sampleBlock = samples.length ? `
+    <details style="margin-top:10px">
+      <summary style="cursor:pointer;color:var(--muted);font-size:12px">Sample alerts (${samples.length})</summary>
+      <pre style="margin-top:8px;padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02);font-size:11px;line-height:1.4;max-height:280px;overflow:auto">${escHtml(JSON.stringify(samples, null, 2))}</pre>
+    </details>` : '';
+  const nextBlock = next.length ? `
+    <div style="margin-top:12px;padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02)">
+      <div style="font-weight:600;font-size:12px;margin-bottom:6px">Recommended next steps</div>
+      <ul style="margin:0;padding-left:18px;font-size:12px;line-height:1.5;color:#cbd5e1">${next.map(s => `<li>${escHtml(s)}</li>`).join('')}</ul>
+    </div>` : '';
+  el.innerHTML = cards + nextBlock + sampleBlock;
+}
+
+async function runMitreMap() {
+  const timeRange = (document.getElementById('mitre-time-range').value || '24h').trim();
+  const minLevel  = parseInt(document.getElementById('mitre-min-level').value, 10) || 5;
+  const limit     = parseInt(document.getElementById('mitre-limit').value, 10) || 50;
+  const query     = (document.getElementById('mitre-query').value || '').trim();
+  const ruleId    = (document.getElementById('mitre-rule-id').value || '').trim();
+  const agentId   = (document.getElementById('mitre-agent-id').value || '').trim();
+  const srcip     = (document.getElementById('mitre-srcip').value || '').trim();
+  const includeLlm = !!document.getElementById('mitre-include-llm').checked;
+
+  const payload = {
+    time_range: timeRange,
+    min_level: minLevel,
+    limit: limit,
+    include_llm: includeLlm,
+  };
+  if (query)   payload.query = query;
+  if (ruleId)  payload.rule_id = ruleId;
+  if (agentId) payload.agent_id = agentId;
+  if (srcip)   payload.srcip = srcip;
+
+  setMitreStatus('wait', 'running');
+  clearMitreRawLog();
+  appendMitreRawLog('Request', payload);
+
+  try {
+    const res = await apiPost('/soc/mitre-map', payload);
+    appendMitreRawLog('Response', res);
+    const data = res && res.data ? res.data : {};
+    renderMitreSummary(data, {
+      time_range: res.time_range,
+      min_level: res.min_level,
+      limit: res.limit,
+      include_llm: res.include_llm,
+    });
+    renderMitreTechniques(data);
+    const engine = (data.mapping_method && data.mapping_method.engine) || '-';
+    setMitreStatus('ok', `done (${engine})`);
+    return res;
+  } catch (e) {
+    appendMitreRawLog('Error', e.message || String(e));
+    const el = document.getElementById('mitre-render');
+    if (el) {
+      el.classList.add('empty-state');
+      el.innerHTML = `<div class="icon">⚠</div>${escHtml(e.message || 'Mapping failed')}`;
+    }
+    setMitreStatus('err', 'failed');
+    return null;
+  }
+}
+
+// ─── IOC Pivot tab (Wazuh + OpenCTI + Neo4j) ────────────────────────────────
+const IOC_PRESETS = {
+  demo_ip:   { ioc_value: '198.51.100.7', ioc_type: 'ip', time_range: '7d', min_level: 5 },
+  demo_user: { ioc_value: 'jdoe',         ioc_type: 'user', time_range: '24h', min_level: 5 },
+};
+
+function setIocStatus(kind, label) {
+  const pill = document.getElementById('ioc-status-pill');
+  if (!pill) return;
+  pill.classList.remove('ok', 'wait', 'err');
+  if (kind) pill.classList.add(kind);
+  pill.textContent = label || 'idle';
+}
+
+function appendIocRawLog(title, data) {
+  const out = document.getElementById('ioc-raw');
+  if (!out) return;
+  const ts = new Date().toLocaleTimeString();
+  const body = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  out.textContent += `\n\n[${ts}] ${title}\n${body}`;
+  out.scrollTop = out.scrollHeight;
+}
+
+function clearIocRawLog() {
+  const out = document.getElementById('ioc-raw');
+  if (out) out.textContent = 'Running IOC pivot request...';
+}
+
+function iocVerdictColor(verdict) {
+  switch (String(verdict || '').toLowerCase()) {
+    case 'malicious':  return '#ef4444';
+    case 'suspicious': return '#f59e0b';
+    case 'benign':     return '#22c55e';
+    default:           return '#94a3b8';
+  }
+}
+
+function iocSeverityColor(sev) {
+  switch (String(sev || '').toLowerCase()) {
+    case 'critical': return '#ef4444';
+    case 'high':     return '#f97316';
+    case 'medium':   return '#f59e0b';
+    case 'low':      return '#22c55e';
+    default:         return '#94a3b8';
+  }
+}
+
+async function loadIocPivotPreset(name) {
+  const valEl = document.getElementById('ioc-value');
+  const typeEl = document.getElementById('ioc-type');
+  const trEl = document.getElementById('ioc-time-range');
+  const lvlEl = document.getElementById('ioc-min-level');
+  if (name === 'top_ip') {
+    // Pull most recent alerts via /alerts/fetch and pick the most common src IP
+    try {
+      setIocStatus('wait', 'fetching alerts');
+      const res = await apiPost('/alerts/fetch', { time_range: '24h', level: '5+', limit: 100 });
+      const alerts = (res && (res.alerts || res.data || [])) || [];
+      const counts = {};
+      for (const a of alerts) {
+        const ip = (a.src_ip || a.srcip || (a.data && (a.data.srcip || a.data.src_ip)) || '').trim();
+        if (ip) counts[ip] = (counts[ip] || 0) + 1;
+      }
+      const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+      if (top) {
+        valEl.value = top[0];
+        typeEl.value = 'ip';
+        setIocStatus('ok', `top IP loaded (${top[0]})`);
+      } else {
+        setIocStatus('err', 'no source IPs found');
+      }
+    } catch (e) {
+      setIocStatus('err', 'top IP fetch failed');
+    }
+    return;
+  }
+  const preset = IOC_PRESETS[name];
+  if (!preset) return;
+  if (valEl) valEl.value = preset.ioc_value;
+  if (typeEl) typeEl.value = preset.ioc_type;
+  if (trEl) trEl.value = preset.time_range || '24h';
+  if (lvlEl) lvlEl.value = preset.min_level || 5;
+}
+
+function renderIocVerdict(data) {
+  const el = document.getElementById('ioc-verdict');
+  if (!el) return;
+  const sm = (data && data.synthesis_method) || {};
+  const verdict = (data && data.verdict) || 'unknown';
+  const conf = (data && data.confidence != null) ? Number(data.confidence) : 0;
+  const sev = (data && data.severity) || 'low';
+  const rationale = (data && data.rationale) || '';
+  const actions = (data && data.recommended_actions) || [];
+  const baseline = (data && data.deterministic_baseline) || {};
+  const engineColor = sm.engine === 'langchain' ? '#22c55e' : '#94a3b8';
+  el.classList.remove('empty-state');
+  el.style.padding = '14px';
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+      <div><div style="font-size:11px;color:var(--muted)">Verdict</div><div style="font-weight:700;color:${iocVerdictColor(verdict)};text-transform:uppercase">${escHtml(verdict)}</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">Confidence</div><div style="font-weight:600">${(conf * 100).toFixed(0)}%</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">Severity</div><div style="font-weight:600;color:${iocSeverityColor(sev)};text-transform:uppercase">${escHtml(sev)}</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">Engine</div><div style="font-weight:600;color:${engineColor}">${escHtml(sm.engine || '-')}</div></div>
+      <div><div style="font-size:11px;color:var(--muted)">Model</div><div style="font-weight:600">${escHtml(sm.model || '-')}</div></div>
+    </div>
+    <div style="margin-top:10px;font-size:12px;color:var(--muted)">Status: ${escHtml(sm.status || '-')}</div>
+    ${rationale ? `<div style="margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02);font-size:12px;line-height:1.5"><strong>Rationale:</strong> ${escHtml(rationale)}</div>` : ''}
+    ${actions.length ? `<div style="margin-top:10px;padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02)"><div style="font-weight:600;font-size:12px;margin-bottom:6px">Recommended actions</div><ul style="margin:0;padding-left:18px;font-size:12px;line-height:1.5;color:#cbd5e1">${actions.map(a => `<li>${escHtml(a)}</li>`).join('')}</ul></div>` : ''}
+    ${baseline && baseline.verdict ? `<details style="margin-top:10px"><summary style="cursor:pointer;color:var(--muted);font-size:11px">Deterministic baseline (engine=deterministic)</summary><pre style="margin-top:6px;padding:8px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02);font-size:11px;line-height:1.4">${escHtml(JSON.stringify(baseline, null, 2))}</pre></details>` : ''}
+  `;
+}
+
+function renderIocSources(data) {
+  const el = document.getElementById('ioc-sources');
+  if (!el) return;
+  const sources = (data && data.sources) || {};
+  const wz = sources.wazuh || {};
+  const cti = sources.opencti || {};
+  const ng = sources.neo4j || {};
+  const samples = (data && data.sample_alerts) || [];
+  const next = (data && data.recommended_next_steps) || [];
+
+  function statusPill(block) {
+    if (block.skipped) return `<span class="grouping-pill" style="background:#475569">skipped</span>`;
+    if (block.available) return `<span class="grouping-pill" style="background:#16a34a">available</span>`;
+    return `<span class="grouping-pill" style="background:#b45309">unavailable</span>`;
+  }
+  function kvList(obj, max) {
+    const items = (obj || []).slice(0, max || 5);
+    if (!items.length) return '<span style="color:var(--muted);font-size:11px">none</span>';
+    return items.map(it => `<span class="grouping-pill" style="margin-right:4px">${escHtml(it.value || '?')} × ${escHtml(it.count || 0)}</span>`).join('');
+  }
+
+  const wazuhCard = `
+    <div style="border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--card);margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div style="font-weight:700">🛡️ Wazuh</div>
+        <div style="font-size:11px;color:var(--muted)">alerts: <strong style="color:#cbd5e1">${escHtml(wz.alerts_count != null ? wz.alerts_count : 0)}</strong></div>
+      </div>
+      <div style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;font-size:12px">
+        <div><div style="font-size:11px;color:var(--muted)">Earliest</div><div>${escHtml(wz.earliest || '-')}</div></div>
+        <div><div style="font-size:11px;color:var(--muted)">Latest</div><div>${escHtml(wz.latest || '-')}</div></div>
+        <div><div style="font-size:11px;color:var(--muted)">Severity breakdown</div><div>${escHtml(JSON.stringify(wz.severity_breakdown || {}))}</div></div>
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:var(--muted)">Top rule IDs:</div>
+      <div style="margin-top:4px">${kvList(wz.top_rule_ids)}</div>
+      <div style="margin-top:8px;font-size:11px;color:var(--muted)">Top agents:</div>
+      <div style="margin-top:4px">${kvList(wz.top_agents)}</div>
+      <div style="margin-top:8px;font-size:11px;color:var(--muted)">Top source IPs:</div>
+      <div style="margin-top:4px">${kvList(wz.top_source_ips)}</div>
+    </div>`;
+
+  const ctiCard = `
+    <div style="border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--card);margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div style="font-weight:700">🧠 OpenCTI ${statusPill(cti)}</div>
+        <div style="font-size:11px;color:var(--muted)">indicators: <strong style="color:#cbd5e1">${escHtml(cti.indicators_count != null ? cti.indicators_count : 0)}</strong></div>
+      </div>
+      ${cti.error ? `<div style="margin-top:8px;font-size:11px;color:#fbbf24">${escHtml(cti.error)}</div>` : ''}
+      ${cti.observable_summary ? `<div style="margin-top:8px;font-size:12px"><strong>${escHtml(cti.observable_summary.entity_type || '?')}</strong> — ${escHtml(cti.observable_summary.value || '')}</div>` : ''}
+      <div style="margin-top:8px;font-size:11px;color:var(--muted)">Top labels:</div>
+      <div style="margin-top:4px">${kvList(cti.top_labels)}</div>
+      <div style="margin-top:8px;font-size:11px;color:var(--muted)">TLP markings:</div>
+      <div style="margin-top:4px">${kvList(cti.top_tlp, 3)}</div>
+      ${cti.max_confidence != null ? `<div style="margin-top:8px;font-size:11px;color:var(--muted)">Max confidence: <strong style="color:#cbd5e1">${escHtml(cti.max_confidence)}</strong></div>` : ''}
+    </div>`;
+
+  const neoCard = `
+    <div style="border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--card);margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div style="font-weight:700">🕸️ Neo4j ${statusPill(ng)}</div>
+        <div style="font-size:11px;color:var(--muted)">type: <strong style="color:#cbd5e1">${escHtml(ng.ioc_type || '-')}</strong></div>
+      </div>
+      ${ng.error ? `<div style="margin-top:8px;font-size:11px;color:#fbbf24">${escHtml(ng.error)}</div>` : ''}
+      <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--muted);font-size:11px">Graph payload</summary>
+        <pre style="margin-top:6px;padding:8px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02);font-size:11px;line-height:1.4;max-height:280px;overflow:auto">${escHtml(JSON.stringify(ng, null, 2))}</pre>
+      </details>
+    </div>`;
+
+  const nextBlock = next.length ? `
+    <div style="margin-top:12px;padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02)">
+      <div style="font-weight:600;font-size:12px;margin-bottom:6px">Recommended next steps</div>
+      <ul style="margin:0;padding-left:18px;font-size:12px;line-height:1.5;color:#cbd5e1">${next.map(s => `<li>${escHtml(s)}</li>`).join('')}</ul>
+    </div>` : '';
+
+  const sampleBlock = samples.length ? `
+    <details style="margin-top:10px">
+      <summary style="cursor:pointer;color:var(--muted);font-size:12px">Sample alerts (${samples.length})</summary>
+      <pre style="margin-top:8px;padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02);font-size:11px;line-height:1.4;max-height:280px;overflow:auto">${escHtml(JSON.stringify(samples, null, 2))}</pre>
+    </details>` : '';
+
+  el.classList.remove('empty-state');
+  el.innerHTML = wazuhCard + ctiCard + neoCard + nextBlock + sampleBlock;
+}
+
+async function runIocPivot() {
+  const iocValue = (document.getElementById('ioc-value').value || '').trim();
+  if (!iocValue) {
+    setIocStatus('err', 'IOC required');
+    appendIocRawLog('Validation', 'IOC value is required');
+    return null;
+  }
+  const iocType   = (document.getElementById('ioc-type').value || 'auto').trim();
+  const timeRange = (document.getElementById('ioc-time-range').value || '24h').trim();
+  const minLevel  = parseInt(document.getElementById('ioc-min-level').value, 10) || 5;
+  const limit     = parseInt(document.getElementById('ioc-limit').value, 10) || 30;
+  const maxHops   = parseInt(document.getElementById('ioc-max-hops').value, 10) || 5;
+  const includeOpencti = !!document.getElementById('ioc-include-opencti').checked;
+  const includeNeo4j   = !!document.getElementById('ioc-include-neo4j').checked;
+  const includeLlm     = !!document.getElementById('ioc-include-llm').checked;
+
+  const payload = {
+    ioc_value: iocValue,
+    ioc_type: iocType,
+    time_range: timeRange,
+    min_level: minLevel,
+    limit: limit,
+    max_hops: maxHops,
+    include_opencti: includeOpencti,
+    include_neo4j: includeNeo4j,
+    include_llm: includeLlm,
+  };
+
+  setIocStatus('wait', 'running');
+  clearIocRawLog();
+  appendIocRawLog('Request', payload);
+
+  try {
+    const res = await apiPost('/soc/ioc-pivot', payload);
+    appendIocRawLog('Response', res);
+    const data = res && res.data ? res.data : {};
+    renderIocVerdict(data);
+    renderIocSources(data);
+    const engine = (data.synthesis_method && data.synthesis_method.engine) || '-';
+    const verdict = data.verdict || '-';
+    setIocStatus('ok', `done (${engine}, ${verdict})`);
+    return res;
+  } catch (e) {
+    appendIocRawLog('Error', e.message || String(e));
+    const verdictEl = document.getElementById('ioc-verdict');
+    if (verdictEl) {
+      verdictEl.classList.add('empty-state');
+      verdictEl.innerHTML = `<div class="icon">⚠</div>${escHtml(e.message || 'Pivot failed')}`;
+    }
+    setIocStatus('err', 'failed');
+    return null;
+  }
+}
+
+// ─── Global IOC pivot (no IOC entry required) ────────────────────────────────
+const _iocGlobalCache = {};
+
+async function runGlobalIocPivot() {
+  const nEl = document.getElementById('ioc-global-n');
+  const topN = Math.max(1, Math.min(10, parseInt((nEl && nEl.value) || '3', 10) || 3));
+  const timeRange = (document.getElementById('ioc-time-range').value || '24h').trim();
+  const minLevel  = parseInt(document.getElementById('ioc-min-level').value, 10) || 5;
+  const limit     = parseInt(document.getElementById('ioc-limit').value, 10) || 30;
+  const maxHops   = parseInt(document.getElementById('ioc-max-hops').value, 10) || 5;
+  const includeOpencti = !!document.getElementById('ioc-include-opencti').checked;
+  const includeNeo4j   = !!document.getElementById('ioc-include-neo4j').checked;
+  const includeLlm     = !!document.getElementById('ioc-include-llm').checked;
+
+  setIocStatus('wait', 'discovering top IOCs');
+  clearIocRawLog();
+  appendIocRawLog('Global pivot config', { topN, timeRange, minLevel, limit, includeLlm });
+
+  // 1) Discover top IOCs from recent alerts. Harvest both src_ip and dst_ip
+  //    and auto-widen if we don't reach topN candidates.
+  function harvest(alerts) {
+    const counts = {};
+    for (const a of alerts || []) {
+      // Only harvest source IPs — destination IPs are local/legitimate targets,
+      // not threat actors, and should not become pivot candidates.
+      const candidates = [
+        a.src_ip, a.srcip,
+        (a.data && (a.data.srcip || a.data.src_ip)),
+      ];
+      for (const v of candidates) {
+        const ip = (v || '').trim();
+        if (ip) counts[ip] = (counts[ip] || 0) + 1;
+      }
+    }
+    return counts;
+  }
+  function rank(counts) {
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }
+
+  let candidates = [];
+  let totalAlerts = 0;
+  let widened = false;
+  try {
+    // First sweep at the user-selected min_level
+    let res = await apiPost('/alerts/fetch', { time_range: timeRange, level: `${minLevel}+`, limit: 1000 });
+    let alerts = (res && (res.alerts || res.data || [])) || [];
+    totalAlerts = alerts.length;
+    let counts = harvest(alerts);
+    let ranked = rank(counts);
+
+    // Auto-widen if we don't have enough distinct IOCs:
+    //   step 1 — drop the level floor to 1+ at the same time range
+    //   step 2 — also escalate the time range to 7d/30d if still short
+    const widerRanges = [];
+    if (!['7d', '30d'].includes(timeRange)) widerRanges.push('7d', '30d');
+    else if (timeRange === '7d') widerRanges.push('30d');
+
+    if (ranked.length < topN) {
+      widened = true;
+      // step 1: lower level
+      res = await apiPost('/alerts/fetch', { time_range: timeRange, level: '1+', limit: 1000 });
+      alerts = (res && (res.alerts || res.data || [])) || [];
+      totalAlerts += alerts.length;
+      Object.assign(counts, harvest(alerts));
+      ranked = rank(counts);
+    }
+    for (const tr of widerRanges) {
+      if (ranked.length >= topN) break;
+      widened = true;
+      res = await apiPost('/alerts/fetch', { time_range: tr, level: '1+', limit: 1000 });
+      alerts = (res && (res.alerts || res.data || [])) || [];
+      totalAlerts += alerts.length;
+      Object.assign(counts, harvest(alerts));
+      ranked = rank(counts);
+    }
+
+    candidates = ranked
+      .slice(0, topN)
+      .map(([ip, cnt]) => ({ ioc_value: ip, ioc_type: 'ip', alert_count: cnt }));
+    appendIocRawLog('Discovered candidates', {
+      requested: topN,
+      found: candidates.length,
+      unique_in_universe: ranked.length,
+      total_alerts_scanned: totalAlerts,
+      widened,
+      candidates,
+    });
+  } catch (e) {
+    appendIocRawLog('Discovery error', e.message || String(e));
+    setIocStatus('err', 'discovery failed');
+    return null;
+  }
+
+  if (!candidates.length) {
+    setIocStatus('err', 'no IOCs in window');
+    const verdictEl = document.getElementById('ioc-verdict');
+    if (verdictEl) {
+      verdictEl.classList.add('empty-state');
+      verdictEl.innerHTML = `<div class="icon">∅</div>No source/destination IPs found after auto-widening to level 1+ across 24h/7d/30d. The Wazuh index appears to have no usable IPs in scope.`;
+    }
+    const sourcesEl = document.getElementById('ioc-sources');
+    if (sourcesEl) {
+      sourcesEl.classList.add('empty-state');
+      sourcesEl.innerHTML = `<div class="icon">∅</div>Nothing to pivot on.`;
+    }
+    return null;
+  }
+  if (candidates.length < topN) {
+    appendIocRawLog('Notice',
+      `Only ${candidates.length} distinct IOC(s) available in the alert universe (requested ${topN}). ` +
+      `Widening: ${widened ? 'yes' : 'no'}. The pivot will run on ${candidates.length} candidate(s).`);
+    setIocStatus('wait', `only ${candidates.length} unique IOC(s) in data (requested ${topN})`);
+  }
+
+  // 2) Pivot each candidate
+  const results = [];
+  for (let i = 0; i < candidates.length; i++) {
+    const c = candidates[i];
+    setIocStatus('wait', `pivoting ${i + 1}/${candidates.length}: ${c.ioc_value}`);
+    const payload = {
+      ioc_value: c.ioc_value,
+      ioc_type: c.ioc_type,
+      time_range: timeRange,
+      min_level: minLevel,
+      limit: limit,
+      max_hops: maxHops,
+      include_opencti: includeOpencti,
+      include_neo4j: includeNeo4j,
+      include_llm: includeLlm,
+    };
+    try {
+      const res = await apiPost('/soc/ioc-pivot', payload);
+      const data = (res && res.data) || {};
+      _iocGlobalCache[c.ioc_value] = data;
+      results.push({ ...c, data, error: null });
+      appendIocRawLog(`Pivot ${i + 1}/${candidates.length} (${c.ioc_value})`, {
+        verdict: data.verdict, confidence: data.confidence, severity: data.severity,
+        engine: data.synthesis_method && data.synthesis_method.engine,
+      });
+    } catch (e) {
+      results.push({ ...c, data: null, error: e.message || String(e) });
+      appendIocRawLog(`Pivot ${i + 1}/${candidates.length} (${c.ioc_value}) ERROR`, e.message || String(e));
+    }
+  }
+
+  // 3) Render summary
+  renderGlobalIocSummary(results);
+  const successful = results.filter(r => r.data);
+  const VERDICT_RANK = { malicious: 4, suspicious: 3, unknown: 2, benign: 1 };
+  successful.sort((a, b) => {
+    const dr = (VERDICT_RANK[b.data.verdict] || 0) - (VERDICT_RANK[a.data.verdict] || 0);
+    if (dr !== 0) return dr;
+    return (Number(b.data.confidence) || 0) - (Number(a.data.confidence) || 0);
+  });
+  if (successful.length) {
+    const worst = successful[0];
+    renderIocVerdict(worst.data);
+  } else {
+    const verdictEl = document.getElementById('ioc-verdict');
+    if (verdictEl) {
+      verdictEl.classList.add('empty-state');
+      verdictEl.innerHTML = `<div class="icon">⚠</div>All ${results.length} pivots failed. See raw log for details.`;
+    }
+  }
+
+  const okCount = successful.length;
+  const worstVerdict = successful[0] && successful[0].data && successful[0].data.verdict || '-';
+  setIocStatus(okCount ? 'ok' : 'err', `global done (${okCount}/${results.length}, worst: ${worstVerdict})`);
+  return results;
+}
+
+function renderGlobalIocSummary(results) {
+  const el = document.getElementById('ioc-sources');
+  if (!el) return;
+  el.classList.remove('empty-state');
+  const rows = results.map((r, idx) => {
+    if (r.error) {
+      return `<tr>
+        <td>${idx + 1}</td>
+        <td><code>${escHtml(r.ioc_value)}</code></td>
+        <td>${escHtml(r.ioc_type)}</td>
+        <td>${escHtml(r.alert_count)}</td>
+        <td colspan="4" style="color:#fbbf24">⚠ ${escHtml(r.error)}</td>
+        <td>—</td>
+      </tr>`;
+    }
+    const d = r.data || {};
+    const sm = d.synthesis_method || {};
+    const s = d.sources || {};
+    const verdict = d.verdict || 'unknown';
+    const conf = (d.confidence != null) ? (Number(d.confidence) * 100).toFixed(0) + '%' : '-';
+    const sev = d.severity || 'low';
+    const wz = (s.wazuh && s.wazuh.alerts_count) || 0;
+    const cti = s.opencti && s.opencti.indicators_count != null ? s.opencti.indicators_count : '-';
+    const neo = s.neo4j && s.neo4j.available ? '✓' : '·';
+    return `<tr style="cursor:pointer" onclick="showGlobalIocDetail('${escHtml(r.ioc_value)}')" title="Click to load details">
+      <td>${idx + 1}</td>
+      <td><code>${escHtml(r.ioc_value)}</code></td>
+      <td>${escHtml(r.ioc_type)}</td>
+      <td>${escHtml(r.alert_count)}</td>
+      <td style="color:${iocVerdictColor(verdict)};font-weight:700;text-transform:uppercase">${escHtml(verdict)}</td>
+      <td>${escHtml(conf)}</td>
+      <td style="color:${iocSeverityColor(sev)};text-transform:uppercase">${escHtml(sev)}</td>
+      <td>${escHtml(sm.engine || '-')}</td>
+      <td style="font-size:11px;color:var(--muted)">wz:${escHtml(wz)} · cti:${escHtml(cti)} · neo:${neo}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `
+    <div style="margin-bottom:8px;font-size:12px;color:var(--muted)">
+      Global pivot summary — ${results.length} candidate IOC(s). Click a row to load its full verdict and source breakdown above.
+    </div>
+    <div style="overflow:auto;border:1px solid var(--border);border-radius:8px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead style="background:rgba(255,255,255,0.03);text-align:left">
+          <tr>
+            <th style="padding:6px 8px">#</th>
+            <th style="padding:6px 8px">IOC</th>
+            <th style="padding:6px 8px">Type</th>
+            <th style="padding:6px 8px">Alerts (window)</th>
+            <th style="padding:6px 8px">Verdict</th>
+            <th style="padding:6px 8px">Conf</th>
+            <th style="padding:6px 8px">Sev</th>
+            <th style="padding:6px 8px">Engine</th>
+            <th style="padding:6px 8px">Sources</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function showGlobalIocDetail(iocValue) {
+  const data = _iocGlobalCache[iocValue];
+  if (!data) return;
+  // Populate the form so the user can re-run / refine if desired
+  const valEl = document.getElementById('ioc-value');
+  if (valEl && data.ioc && data.ioc.value) valEl.value = data.ioc.value;
+  const typeEl = document.getElementById('ioc-type');
+  if (typeEl && data.ioc && data.ioc.type) typeEl.value = data.ioc.type;
+  renderIocVerdict(data);
+  // Replace the global summary with the per-IOC source breakdown for this row
+  renderIocSources(data);
+  appendIocRawLog(`Loaded detail for ${iocValue}`, {
+    verdict: data.verdict, confidence: data.confidence, engine: data.synthesis_method && data.synthesis_method.engine,
+  });
+}
+
+// ─── Results panel helpers ───────────────────────────────────────────────────
+function showLoading(label) {
+  document.getElementById('results-label').innerHTML =
+    `<span class="spinner"></span>${escHtml(label)}`;
+  document.getElementById('results-empty').style.display = 'none';
+  document.getElementById('results-body').style.display = 'none';
+}
+
+function showResults(label, html) {
+  document.getElementById('results-label').textContent = label;
+  document.getElementById('results-empty').style.display = 'none';
+  const body = document.getElementById('results-body');
+  body.innerHTML = html;
+  body.style.display = 'block';
+}
+
+function showError(label, msg) {
+  showResults(label,
+    `<div class="error-banner">⚠ ${escHtml(msg)}</div>`);
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+// Rich incident cards — fetches each incident from /incidents/{id} in parallel
+const RISK_COLOR   = {critical:'#ef4444', high:'#f97316', medium:'#f59e0b', low:'#22c55e'};
+const STATUS_COLOR = {open:'#3b82f6', assigned:'#2dd4bf', investigating:'#c084fc', escalated:'#fb923c', resolved:'#22c55e', closed:'#9ca3af', archived:'#6b7280'};
+
+async function incidentCards(ids) {
+  if (!ids || !ids.length) return '<span style="color:var(--muted)">No incidents found.</span>';
+  let incidents;
+  try {
+    incidents = await Promise.all(
+      ids.map(id => fetch(`/incidents/${encodeURIComponent(id)}`).then(r => r.ok ? r.json() : null).catch(() => null))
+    );
+  } catch(e) {
+    return ids.map(id => `<span class="incident-chip" onclick="openIncident('${escHtml(id)}')">${escHtml(id)}</span>`).join('');
+  }
+  return incidents.map((inc, i) => {
+    if (!inc) return `<span class="incident-chip" onclick="openIncident('${escHtml(ids[i])}')">${escHtml(ids[i])}</span>`;
+    const riskColor   = RISK_COLOR[inc.risk_tier]  || '#6366f1';
+    const statusColor = STATUS_COLOR[inc.status]    || '#64748b';
+    const slaTag  = inc.sla_breach ? '<span class="inc-sla-tag">⚠ SLA</span>' : '';
+    const srcIp   = inc.source_ip  ? `<span class="inc-ip">${escHtml(inc.source_ip)}</span>` : '';
+    return `<div class="inc-result-card">
+      <div class="inc-result-header">
+        <span class="inc-result-id" onclick="openIncident('${escHtml(inc.incident_id)}')">${escHtml(inc.incident_id)}</span>
+        <span class="inc-result-badge" style="color:${riskColor}">${escHtml(inc.risk_tier)}</span>
+        <span class="inc-result-badge" style="color:${statusColor}">${escHtml(inc.status)}</span>
+        ${slaTag}
+      </div>
+      <div class="inc-result-title">${escHtml(inc.title)}</div>
+      <div class="inc-result-footer">
+        ${srcIp}
+        <button class="btn btn-sm" onclick="openIncident('${escHtml(inc.incident_id)}')">Timeline</button>
+        <a class="btn btn-sm btn-primary inc-open-link" href="/ui?incident=${encodeURIComponent(inc.incident_id)}" target="_blank">Open Manager →</a>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Legacy plain chips (kept for fallback callers)
+function incidentChips(ids) {
+  if (!ids || !ids.length) return '<span style="color:var(--muted)">No incidents found.</span>';
+  return ids.map(id =>
+    `<span class="incident-chip"
+       onclick="openIncident('${escHtml(id)}')"
+       title="Click to load timeline">${escHtml(id)}</span>`
+  ).join('');
+}
+
+function openIncident(incidentId) {
+  document.getElementById('tl-incident-id').value = incidentId;
+  document.getElementById('g-incident-id').value  = incidentId;
+  switchTab('timeline');
+  loadTimeline(incidentId);
+}
+
+// ─── Query: by domain ────────────────────────────────────────────────────────
+async function runByDomain() {
+  const domain = document.getElementById('q-domain').value.trim();
+  if (!domain) return;
+  showLoading(`C2 domain: ${domain}`);
+  try {
+    const r = await api(`/cases/query/by-domain/${encodeURIComponent(domain)}`);
+    showResults(
+      `C2 domain "${domain}" — ${r.count} incident(s)`,
+      `<p style="margin-bottom:12px;color:var(--muted);font-size:12px">
+        Cypher: <code style="color:var(--accent)">MATCH (a:ALERT)-[:INVOLVES]->(ip:IP_ADDRESS)-[:RESOLVES_TO]->(d:DOMAIN {name:"${escHtml(domain)}"})</code>
+      </p>
+      <div class="incident-list" id="domain-cards-placeholder"><span class="spinner"></span> Loading incident details…</div>`,
+    );
+    document.getElementById('domain-cards-placeholder').innerHTML = await incidentCards(r.incident_ids);
+  } catch(e) { showError(`C2 domain "${domain}"`, e.message); }
+}
+
+// ─── Query: by IP ────────────────────────────────────────────────────────────
+async function runByIP() {
+  const ip = document.getElementById('q-ip').value.trim();
+  if (!ip) return;
+  showLoading(`IP: ${ip}`);
+  try {
+    const r = await api(`/cases/query/by-ip/${encodeURIComponent(ip)}`);
+    showResults(
+      `IP "${ip}" — ${r.count} incident(s)`,
+      `<p style="margin-bottom:12px;color:var(--muted);font-size:12px">
+        Cypher: <code style="color:var(--accent)">MATCH (a:ALERT)-[:INVOLVES]->(ip:IP_ADDRESS {ip:"${escHtml(ip)}"})</code>
+      </p>
+      <div class="incident-list" id="ip-cards-placeholder"><span class="spinner"></span> Loading incident details…</div>`,
+    );
+    document.getElementById('ip-cards-placeholder').innerHTML = await incidentCards(r.incident_ids);
+  } catch(e) { showError(`IP "${ip}"`, e.message); }
+}
+
+// ─── Query: by user ──────────────────────────────────────────────────────────
+async function runByUser() {
+  const user = document.getElementById('q-user').value.trim();
+  if (!user) return;
+  showLoading(`User: ${user}`);
+  try {
+    const r = await api(`/cases/query/by-user/${encodeURIComponent(user)}`);
+    showResults(
+      `User "${user}" — ${r.count} incident(s)`,
+      `<p style="margin-bottom:12px;color:var(--muted);font-size:12px">
+        Cypher: <code style="color:var(--accent)">MATCH (a:ALERT)-[:INVOLVES]->(u:USER {username:"${escHtml(user)}"})</code>
+      </p>
+      <div class="incident-list" id="user-cards-placeholder"><span class="spinner"></span> Loading incident details…</div>`,
+    );
+    document.getElementById('user-cards-placeholder').innerHTML = await incidentCards(r.incident_ids);
+  } catch(e) { showError(`User "${user}"`, e.message); }
+}
+
+// ─── Query: lateral movement ──────────────────────────────────────────────────
+async function runLateralMovement() {
+  const n = parseInt(document.getElementById('q-minws').value) || 2;
+  showLoading(`Lateral movement (min ${n} hosts)`);
+  try {
+    const r = await api(`/cases/query/lateral-movement?min_workstations=${n}`);
+    if (!r.candidates.length) {
+      showResults(`Lateral movement — no candidates (min ${n} hosts)`,
+        `<span style="color:var(--muted)">No users matched. Try lowering the threshold.</span>`);
+      return;
+    }
+    let rows = r.candidates.map(c => {
+      const hosts = c.workstations.map(h => `<code>${escHtml(h)}</code>`).join(', ');
+      const badge = c.login_count >= 3 ? 'badge-danger' : 'badge-warn';
+      return `<tr>
+        <td><span class="badge badge-info">${escHtml(c.user)}</span></td>
+        <td><span class="badge ${badge}">${c.login_count}</span></td>
+        <td style="font-size:12px">${hosts}</td>
+      </tr>`;
+    }).join('');
+    showResults(
+      `Lateral movement — ${r.count} candidate(s)`,
+      `<p style="margin-bottom:12px;color:var(--muted);font-size:12px">
+        Cypher: <code style="color:var(--accent)">MATCH (u:USER)-[:LOGGED_IN_TO]->(ws:WORKSTATION) WITH u, count(DISTINCT ws) AS cnt WHERE cnt >= ${n}</code>
+      </p>
+      <table>
+        <thead><tr><th>User</th><th>Hosts (count)</th><th>Workstations</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`,
+    );
+  } catch(e) { showError('Lateral movement', e.message); }
+}
+
+// ─── Query: attack chain ──────────────────────────────────────────────────────
+async function runAttackChain() {
+  const ip   = document.getElementById('q-chainip').value.trim();
+  const hops = document.getElementById('q-chainhops').value || 5;
+  if (!ip) return;
+  showLoading(`Attack chain from ${ip} (max ${hops} hops)`);
+  try {
+    const r = await api(`/cases/query/attack-chain/${encodeURIComponent(ip)}?max_hops=${hops}`);
+    if (!r.chains.length) {
+      showResults(`Attack chain from ${ip} — no paths found`,
+        `<span style="color:var(--muted)">No attack chain found. Ensure IPs are seeded (run seed_forensic_samples.py).</span>`);
+      return;
+    }
+    const cards = r.chains.map((chain, i) => {
+      const hops = [];
+      for (let j = 0; j < chain.chain.length; j++) {
+        const node = chain.chain[j];
+        const label = node.labels[0] || 'NODE';
+        const props = node.props;
+        const name = props.ip || props.name || props.username ||
+                     props.hostname || props.path || props.pid_host ||
+                     props.alert_id || JSON.stringify(props).slice(0,30);
+        const color = NODE_COLORS[label] || '#6366f1';
+        hops.push(`<span class="chain-hop">
+          <span style="background:${color}20;color:${color};padding:2px 7px;border-radius:10px;font-size:11px">${escHtml(label)}</span>
+          <span style="font-size:11px;color:var(--text)">${escHtml(name)}</span>
+        </span>`);
+        if (j < chain.relationships.length) {
+          hops.push(`<span class="chain-arrow">→</span><span class="chain-rel">${escHtml(chain.relationships[j])}</span>`);
+        }
+      }
+      return `<div class="chain-card">
+        <span style="font-size:11px;color:var(--muted)">Path ${i+1} · depth ${chain.depth}</span><br>
+        <div style="margin-top:6px;display:flex;flex-wrap:wrap;align-items:center;gap:4px">
+          ${hops.join('')}
+        </div>
+      </div>`;
+    }).join('');
+    showResults(
+      `Attack chain from ${ip} — ${r.path_count} path(s)`,
+      `<p style="margin-bottom:12px;color:var(--muted);font-size:12px">
+        Cypher: <code style="color:var(--accent)">MATCH path=(ip:IP_ADDRESS {ip:"${escHtml(ip)}"})-[*1..${hops}]->(entity)</code>
+      </p>${cards}`,
+    );
+  } catch(e) { showError(`Attack chain from ${ip}`, e.message); }
+}
+
+// ─── Open graph from query tab ───────────────────────────────────────────────
+function loadGraphFromQuery() {
+  const id = document.getElementById('q-graph-inc').value.trim();
+  if (!id) return;
+  document.getElementById('g-incident-id').value = id;
+  switchTab('graph');
+  loadGraph(id);
+}
+
+// ─── Timeline ────────────────────────────────────────────────────────────────
+async function loadTimeline(incidentIdArg) {
+  const id = incidentIdArg || document.getElementById('tl-incident-id').value.trim();
+  if (!id) return;
+  const body = document.getElementById('timeline-body');
+  body.innerHTML = '<div class="empty-state"><span class="spinner"></span> Loading timeline…</div>';
+  try {
+    const r = await api(`/cases/${encodeURIComponent(id)}/timeline`);
+    if (!r.events.length) {
+      body.innerHTML = `<div class="empty-state"><div class="icon">📭</div>No events found for <code>${escHtml(id)}</code></div>`;
+      return;
+    }
+    // Collect incident IDs from events to populate suggestions
+    populateSuggestions([id]);
+    let html = `<p style="margin-bottom:16px;font-size:12px;color:var(--muted)">${r.count} event(s) for <strong style="color:var(--text)">${escHtml(id)}</strong>, oldest first</p>`;
+    html += '<div class="timeline-wrapper">';
+    for (const ev of r.events) {
+      const a = ev.alert;
+      const sevClass = `sev-dot-${a.severity || 0}`;
+      const links = (ev.links || []).map(lnk => {
+        const label = lnk.labels[0] || 'NODE';
+        const entityText = lnk.entity
+          ? (lnk.entity.ip || lnk.entity.name || lnk.entity.username ||
+             lnk.entity.hostname || lnk.entity.path || lnk.entity.pid_host || '?')
+          : '?';
+        return `<span class="tl-link-chip chip-${label}">${escHtml(lnk.rel)} → ${escHtml(entityText)}</span>`;
+      }).join('');
+      html += `<div class="tl-event">
+        <div class="tl-dot ${sevClass}"></div>
+        <div class="tl-card">
+          <div class="tl-ts">${escHtml(a.timestamp || '')}</div>
+          <div class="tl-rule">
+            <span class="badge ${SEV_BADGE(a.severity || 0)}" style="margin-right:8px">SEV ${a.severity || 0}</span>
+            ${escHtml(a.rule_name || `Rule ${a.rule_id || '?'}`)}
+          </div>
+          ${a.full_log ? `<div class="tl-log">${escHtml(a.full_log)}</div>` : ''}
+          ${links ? `<div class="tl-links">${links}</div>` : ''}
+        </div>
+      </div>`;
+    }
+    html += '</div>';
+    body.innerHTML = html;
+  } catch(e) {
+    body.innerHTML = `<div class="error-banner">⚠ ${escHtml(e.message)}</div>`;
+  }
+}
+
+// suggestions below the input
+function populateSuggestions(ids) {
+  const sg = document.getElementById('tl-suggestions');
+  const existing = new Set(Array.from(sg.querySelectorAll('.suggestion-chip'))
+    .map(el => el.dataset.id));
+  ids.forEach(id => {
+    if (!existing.has(id)) {
+      const chip = document.createElement('span');
+      chip.className = 'suggestion-chip';
+      chip.dataset.id = id;
+      chip.textContent = id;
+      chip.onclick = () => {
+        document.getElementById('tl-incident-id').value = id;
+        loadTimeline(id);
+      };
+      sg.appendChild(chip);
+    }
+  });
+}
+
+// ─── Graph ────────────────────────────────────────────────────────────────────
+let _simulation = null;
+let _svgZoom = null;
+
+// Click anywhere in the graph container when no graph is loaded → trigger Visualize
+function _graphContainerClick(ev) {
+  // Only act when no graph is rendered yet (D3 adds child <g> elements when active)
+  const svg = document.getElementById('graph-svg');
+  if (svg.children.length > 0) return;
+  const inp = document.getElementById('g-incident-id');
+  const id  = (inp.value || inp.placeholder || '').trim();
+  if (!id) return;
+  inp.value = id;  // ensure value is set if we fell back to placeholder
+  loadGraph(id);
+}
+
+async function loadGraph(incidentIdArg) {
+  const id = incidentIdArg || document.getElementById('g-incident-id').value.trim();
+  if (!id) {
+    // Highlight the empty input to guide the user
+    const inp = document.getElementById('g-incident-id');
+    inp.focus();
+    inp.style.borderColor = 'var(--danger)';
+    setTimeout(() => { inp.style.borderColor = ''; }, 1500);
+    return;
+  }
+  const empty = document.getElementById('graph-empty');
+  empty.innerHTML = '<span class="spinner"></span> Loading graph…';
+  empty.style.display = 'flex';
+  document.getElementById('graph-svg').innerHTML = '';
+  try {
+    const r = await api(`/cases/${encodeURIComponent(id)}/graph`);
+    if (!r.nodes.length) {
+      empty.innerHTML = `<div class="icon">📭</div>No graph data for <code>${escHtml(id)}</code><br>
+        <span style="font-size:12px">Run seed_forensic_samples.py to populate sample data.</span>`;
+      empty.style.display = 'flex';
+      return;
+    }
+    empty.style.display = 'none';
+    try {
+      renderGraph(r.nodes, r.edges);
+    } catch(re) {
+      empty.innerHTML = `<div style="color:var(--danger)">⚠ Render error: ${escHtml(re.message)}</div>`;
+      empty.style.display = 'flex';
+    }
+  } catch(e) {
+    empty.innerHTML = `<div style="color:var(--danger)">⚠ ${escHtml(e.message)}</div>`;
+    empty.style.display = 'flex';
+  }
+}
+
+function resetZoom() {
+  if (_svgZoom) {
+    const svg = d3.select('#graph-svg');
+    svg.transition().duration(400).call(_svgZoom.transform, d3.zoomIdentity);
+  }
+}
+
+function renderGraph(nodes, edges) {
+  const container = document.getElementById('graph-container');
+  const W = container.clientWidth;
+  const H = container.clientHeight;
+
+  // Stop any previous simulation
+  if (_simulation) _simulation.stop();
+
+  const svg = d3.select('#graph-svg');
+  svg.selectAll('*').remove();
+
+  // Zoom behaviour
+  const g = svg.append('g');
+  const zoom = d3.zoom().scaleExtent([0.1, 4]).on('zoom', e => g.attr('transform', e.transform));
+  svg.call(zoom);
+  _svgZoom = zoom;
+
+  // Arrow marker for directed edges
+  svg.append('defs').append('marker')
+    .attr('id', 'arrow')
+    .attr('viewBox', '0 -5 10 10')
+    .attr('refX', 22)
+    .attr('refY', 0)
+    .attr('markerWidth', 6)
+    .attr('markerHeight', 6)
+    .attr('orient', 'auto')
+    .append('path')
+    .attr('d', 'M0,-5L10,0L0,5')
+    .attr('fill', '#4b5563');
+
+  // Normalise node IDs (strings)
+  const nodeById = new Map(nodes.map(n => [n.id, n]));
+  const validEdges = edges.filter(e => nodeById.has(e.from) && nodeById.has(e.to));
+
+  // D3 link/node arrays
+  const d3links = validEdges.map(e => ({
+    source: e.from,
+    target: e.to,
+    type:   e.type,
+    props:  e.props || {},
+  }));
+  const d3nodes = nodes.map(n => {
+    const label = (n.labels || [])[0] || 'NODE';
+    const p = n.props || {};
+    const name = p.ip || p.name || p.username || p.hostname || p.path ||
+                 p.pid_host || p.alert_id || label;
+    return { id: n.id, label, name, props: p };
+  });
+
+  // Simulation
+  _simulation = d3.forceSimulation(d3nodes)
+    .force('link',   d3.forceLink(d3links).id(d => d.id).distance(100))
+    .force('charge', d3.forceManyBody().strength(-220))
+    .force('center', d3.forceCenter(W / 2, H / 2))
+    .force('x',      d3.forceX(W / 2).strength(0.05))
+    .force('y',      d3.forceY(H / 2).strength(0.05));
+
+  // Edges
+  const link = g.append('g').selectAll('line')
+    .data(d3links).join('line')
+    .attr('stroke', '#374151')
+    .attr('stroke-width', 1.5)
+    .attr('marker-end', 'url(#arrow)');
+
+  // Edge labels
+  const edgeLabel = g.append('g').selectAll('text')
+    .data(d3links).join('text')
+    .attr('font-size', 9)
+    .attr('fill', '#6b7280')
+    .attr('text-anchor', 'middle')
+    .attr('pointer-events', 'none')
+    .text(d => d.type);
+
+  // Nodes
+  const node = g.append('g').selectAll('circle')
+    .data(d3nodes).join('circle')
+    .attr('r', d => d.label === 'ALERT' ? 14 : 10)
+    .attr('fill', d => NODE_COLORS[d.label] || '#6366f1')
+    .attr('fill-opacity', 0.85)
+    .attr('stroke', d => NODE_COLORS[d.label] || '#6366f1')
+    .attr('stroke-width', 2)
+    .attr('stroke-opacity', 0.4)
+    .style('cursor', 'pointer')
+    .call(d3.drag()
+      .on('start', (ev, d) => {
+        if (!ev.active) _simulation.alphaTarget(0.3).restart();
+        d.fx = d.x; d.fy = d.y;
+      })
+      .on('drag', (ev, d) => { d.fx = ev.x; d.fy = ev.y; })
+      .on('end',  (ev, d) => {
+        if (!ev.active) _simulation.alphaTarget(0);
+        d.fx = null; d.fy = null;
+      }),
+    );
+
+  // Node labels
+  const nodeLabel = g.append('g').selectAll('text')
+    .data(d3nodes).join('text')
+    .attr('font-size', 10)
+    .attr('fill', '#e2e8f0')
+    .attr('text-anchor', 'middle')
+    .attr('dy', '2.2em')
+    .attr('pointer-events', 'none')
+    .text(d => d.name.length > 18 ? d.name.slice(0, 18) + '…' : d.name);
+
+  // Tooltip
+  const tooltip = document.getElementById('graph-tooltip');
+  node
+    .on('mouseover', (ev, d) => {
+      const lines = Object.entries(d.props)
+        .map(([k, v]) => `${k}: ${String(v).slice(0, 80)}`).join('\n');
+      tooltip.textContent = `[${d.label}]\n${lines || '(no properties)'}`;
+      tooltip.style.opacity = '1';
+    })
+    .on('mousemove', ev => {
+      tooltip.style.left = (ev.clientX + 14) + 'px';
+      tooltip.style.top  = (ev.clientY - 14) + 'px';
+    })
+    .on('mouseout', () => { tooltip.style.opacity = '0'; });
+
+  // Tick
+  _simulation.on('tick', () => {
+    link
+      .attr('x1', d => d.source.x)
+      .attr('y1', d => d.source.y)
+      .attr('x2', d => d.target.x)
+      .attr('y2', d => d.target.y);
+    edgeLabel
+      .attr('x', d => (d.source.x + d.target.x) / 2)
+      .attr('y', d => (d.source.y + d.target.y) / 2);
+    node.attr('cx', d => d.x).attr('cy', d => d.y);
+    nodeLabel.attr('x', d => d.x).attr('y', d => d.y);
+  });
+}
+
+// ─── All Cases ───────────────────────────────────────────────────────────────
+const RISK_BADGE = { critical: 'badge-danger', high: 'badge-warn', medium: 'badge-info', low: 'badge-ok' };
+const STATUS_BADGE = {
+  open: 'badge-danger', escalated: 'badge-danger',
+  assigned: 'badge-warn', investigating: 'badge-warn',
+  resolved: 'badge-ok', closed: 'badge-ok', archived: 'badge-purple',
+};
+
+async function loadAllCases() {
+  const body   = document.getElementById('ac-body');
+  const count  = document.getElementById('ac-count');
+  const status = document.getElementById('ac-status').value;
+  const risk   = document.getElementById('ac-risk').value;
+
+  body.innerHTML = '<div class="empty-state"><span class="spinner"></span> Loading cases…</div>';
+  count.textContent = '';
+
+  let url = '/incidents?limit=200';
+  if (status) url += `&status=${encodeURIComponent(status)}`;
+  if (risk)   url += `&risk_tier=${encodeURIComponent(risk)}`;
+
+  let incidents;
+  try {
+    incidents = await api(url);
+  } catch (e) {
+    body.innerHTML = `<div class="error-banner">Failed to load cases: ${e.message}</div>`;
+    return;
+  }
+
+  if (!incidents || incidents.length === 0) {
+    body.innerHTML = '<div class="empty-state"><div class="icon">📭</div>No cases found.</div>';
+    count.textContent = '0 cases';
+    return;
+  }
+
+  count.textContent = `${incidents.length} case${incidents.length !== 1 ? 's' : ''}`;
+
+  const grid = document.createElement('div');
+  grid.className = 'cases-grid';
+
+  incidents.forEach(inc => {
+    const riskCls   = RISK_BADGE[inc.risk_tier]  || 'badge-info';
+    const statusCls = STATUS_BADGE[inc.status]   || 'badge-info';
+    const slaTag    = inc.sla_breach ? '<span class="case-sla-breach">⚠ SLA</span>' : '';
+    const srcIp     = inc.source_ip  ? `<span class="case-ip">src: ${inc.source_ip}</span>` : '';
+    const dstIp     = inc.dest_ip    ? `<span class="case-ip">dst: ${inc.dest_ip}</span>` : '';
+    const created   = inc.created_at ? new Date(inc.created_at).toLocaleString() : '';
+
+    const card = document.createElement('div');
+    card.className = 'case-card';
+    card.innerHTML = `
+      <div class="case-card-header">
+        <span class="case-id" onclick="jumpToTimeline('${inc.incident_id}')">${inc.incident_id}</span>
+        <span class="badge ${riskCls}">${inc.risk_tier}</span>
+        <span class="badge ${statusCls}">${inc.status}</span>
+        ${slaTag}
+      </div>
+      <div class="case-title" title="${(inc.title || '').replace(/"/g,'&quot;')}">${inc.title || '—'}</div>
+      <div class="case-meta">
+        ${srcIp}${dstIp}
+        <span style="font-size:11px;color:var(--muted);margin-left:auto">${created}</span>
+      </div>
+      <div class="case-footer">
+        <button class="btn btn-secondary btn-sm" onclick="jumpToTimeline('${inc.incident_id}')">📅 Timeline</button>
+        <button class="btn btn-secondary btn-sm" onclick="jumpToGraph('${inc.incident_id}')">🕸️ Graph</button>
+        <a class="btn btn-secondary btn-sm" href="/ui?incident=${encodeURIComponent(inc.incident_id)}" target="_blank" style="text-decoration:none">Open Manager →</a>
+      </div>`;
+    grid.appendChild(card);
+  });
+
+  body.innerHTML = '';
+  body.appendChild(grid);
+}
+
+function jumpToTimeline(id) {
+  document.getElementById('tl-incident-id').value = id;
+  switchTab('timeline');
+  loadTimeline();
+}
+
+function jumpToGraph(id) {
+  document.getElementById('g-incident-id').value = id;
+  switchTab('graph');
+  loadGraph();
+}
+
+// ─── Init ────────────────────────────────────────────────────────────────────
+checkHealth();
+setInterval(checkHealth, 30_000);
+
+// Seed suggestions from known sample incident IDs
+populateSuggestions(['INC-FORENSIC-001', 'INC-FORENSIC-002', 'INC-FORENSIC-003']);
+loadIncidentGroupingDemoAlerts('mixed');
+
+// Allow Enter key on inputs
+document.querySelectorAll('input').forEach(inp => {
+  inp.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    const p = inp.closest('.query-card');
+    if (p) p.querySelector('button.btn-primary').click();
+    const tabTL = document.getElementById('tab-timeline');
+    const tabG  = document.getElementById('tab-graph');
+    if (tabTL.classList.contains('active')) loadTimeline();
+    if (tabG.classList.contains('active'))  loadGraph();
+  });
+});
+</script>
+</body>
+</html>

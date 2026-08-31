@@ -1,0 +1,374 @@
+# Phase 4 Advanced SOC Architecture - Complete stack
+# Includes: Incident Management (PostgreSQL), Case Management (Neo4j),
+# Orchestration (Prefect), Events (Celery+RabbitMQ), Analytics (DuckDB),
+# Threat Intelligence, and ML/Anomaly Detection
+
+# Ensure all services share the same `wazuh-soc` project, whether this file
+# is used standalone or merged with compose.full.yml.
+name: wazuh-soc
+
+services:
+
+  # ========================================================================
+  # Layer 1: Incident Management (PostgreSQL)
+  # ========================================================================
+  
+  phase4-postgres:
+    image: postgres:15-alpine
+    container_name: phase4-postgres
+    environment:
+      POSTGRES_DB: phase4_incidents
+      POSTGRES_USER: phase4_admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
+    volumes:
+      - phase4_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U phase4_admin -d phase4_incidents"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - phase4
+
+  # ========================================================================
+  # Layer 2: Case Management & Forensics (Neo4j)
+  # ========================================================================
+  
+  phase4-neo4j:
+    image: neo4j:5-community
+    container_name: phase4-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-phase4_demo_change_me}
+      NEO4J_dbms_memory_heap_max__size: 512M
+    volumes:
+      - phase4_neo4j_data:/var/lib/neo4j/data
+      - phase4_neo4j_logs:/var/lib/neo4j/logs
+    ports:
+      - "7687:7687"  # Bolt
+      - "7474:7474"  # Browser
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "${NEO4J_PASSWORD:-phase4_demo_change_me}", "RETURN 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - phase4
+
+  # ========================================================================
+  # Layer 2: Artifact Storage (MinIO — S3-compatible object store)
+  # ========================================================================
+
+  phase4-minio:
+    image: minio/minio:latest
+    container_name: phase4-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - phase4_minio_data:/data
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # MinIO Console UI
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - phase4
+
+  # ========================================================================
+  # Layer 3: Workflow Orchestration (Prefect)
+  # ========================================================================
+  
+  phase4-prefect-server:
+    image: prefecthq/prefect:2-latest
+    container_name: phase4-prefect
+    command: prefect server start
+    environment:
+      PREFECT_UI_URL: "http://localhost:4200/api"
+      PREFECT_API_URL: "http://phase4-prefect-server:4200/api"
+    volumes:
+      - phase4_prefect_data:/var/prefect/db
+    ports:
+      - "4200:4200"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - phase4
+
+  # ========================================================================
+  # Layer 4: Event Queue (Celery + RabbitMQ)
+  # ========================================================================
+  
+  phase4-rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: phase4-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: phase4_user
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-change_me_in_production}
+      RABBITMQ_DEFAULT_VHOST: phase4
+    volumes:
+      - phase4_rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5673:5672"   # AMQP
+      - "15673:15672" # Management UI
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - phase4
+
+  phase4-celery-worker:
+    image: python:3.12-slim
+    container_name: phase4-celery-worker
+    command: >
+      sh -c "
+        pip install celery redis prometheus-client sqlalchemy psycopg2-binary numpy scipy scikit-learn xgboost &&
+        cd /app &&
+        celery -A phase4.events worker --loglevel=info
+      "
+    volumes:
+      - ./src/wazuh_mcp_server:/app
+    environment:
+      PYTHONPATH: /app
+      CELERY_BROKER_URL: amqp://phase4_user:${RABBITMQ_PASSWORD:-change_me_in_production}@phase4-rabbitmq:5672/phase4
+      CELERY_RESULT_BACKEND: redis://phase4-redis:6379/0
+    depends_on:
+      - phase4-rabbitmq
+      - phase4-redis
+    networks:
+      - phase4
+
+  phase4-redis:
+    image: redis:7-alpine
+    container_name: phase4-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - phase4_redis_data:/data
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - phase4
+
+  # ========================================================================
+  # Layer 5: Analytics & BI (Grafana + Prometheus)
+  # ========================================================================
+  
+  phase4-prometheus:
+    image: prom/prometheus:latest
+    container_name: phase4-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--storage.tsdb.retention.size=5GB"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./config/phase4/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - phase4_prometheus_data:/prometheus
+    ports:
+      - "9091:9090"
+    networks:
+      - phase4
+      - default
+
+  phase4-grafana:
+    image: grafana/grafana:latest
+    container_name: phase4-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_INSTALL_PLUGINS: "grafana-piechart-panel,yesoreyeram-infinity-datasource"
+      WAZUH_INDEXER_PASS: ${WAZUH_INDEXER_PASS:-SecretPassword}
+      # Forwarded to the Infinity datasource for the live MCP traffic feed.
+      MCP_API_KEY: ${MCP_API_KEY:-wazuh_local_demo_change_me}
+      MCP_PROXY_API_KEY: ${MCP_PROXY_API_KEY:-mcp_proxy_local_demo_change_me}
+    volumes:
+      - phase4_grafana_data:/var/lib/grafana
+      - ./config/phase4/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/phase4/grafana/dashboards:/etc/grafana/dashboards:ro
+    ports:
+      - "3002:3000"
+    depends_on:
+      - phase4-prometheus
+    networks:
+      - phase4
+      - wazuh-soc
+      - default
+
+  # ========================================================================
+  # Layer 6: Threat Intelligence Feed Aggregator
+  # ========================================================================
+  
+  phase4-threat-intel:
+    image: python:3.12-slim
+    container_name: phase4-threat-intel
+    command: >
+      sh -c "
+        pip install requests apscheduler sqlalchemy psycopg2-binary &&
+        python /app/threat_intel_worker.py
+      "
+    volumes:
+      - ./src/wazuh_mcp_server/phase4/threat_intel:/app
+    environment:
+      POSTGRES_HOST: phase4-postgres
+      POSTGRES_DB: phase4_incidents
+      POSTGRES_USER: phase4_admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
+      GREYNOISE_API_KEY: ${GREYNOISE_API_KEY:-}
+      MISP_URL: ${MISP_URL:-}
+      MISP_API_KEY: ${MISP_API_KEY:-}
+    depends_on:
+      - phase4-postgres
+    networks:
+      - phase4
+
+  # ========================================================================
+  # Layer 7: ML & Anomaly Detection
+  # ========================================================================
+  
+  phase4-mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: phase4-mlflow
+    command: >
+      /bin/sh -c "
+      pip install psycopg2-binary &&
+      mlflow server
+      --backend-store-uri postgresql://phase4_admin:${POSTGRES_PASSWORD:-change_me_in_production}@phase4-postgres:5432/phase4_incidents
+      --default-artifact-root s3://phase4-ml/artifacts
+      --host 0.0.0.0
+      --port 5000
+      "
+    environment:
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MLFLOW_S3_ENDPOINT_URL: http://phase4-minio:9000
+    ports:
+      - "5001:5000"
+    depends_on:
+      - phase4-postgres
+    networks:
+      - phase4
+
+  phase4-ml-trainer:
+    image: python:3.12-slim
+    container_name: phase4-ml-trainer
+    command: >
+      sh -c "
+        pip install scikit-learn xgboost mlflow psycopg2-binary numpy scipy &&
+        python /app/weekly_training_job.py
+      "
+    volumes:
+      - ./src/wazuh_mcp_server/phase4/ml:/app
+      - phase4_ml_models:/models
+    environment:
+      MLFLOW_TRACKING_URI: http://phase4-mlflow:5000
+      POSTGRES_HOST: phase4-postgres
+      POSTGRES_DB: phase4_incidents
+      POSTGRES_USER: phase4_admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
+    depends_on:
+      - phase4-mlflow
+      - phase4-postgres
+    networks:
+      - phase4
+
+  # ========================================================================
+  # Phase 4 API Server (integrates all layers)
+  # ========================================================================
+  
+  # ── Incident Management API + Web UI ──────────────────────────────────────
+  # Web UI is served at http://localhost:8082/ui (no separate container needed).
+  # static/index.html is part of the volume-mounted source tree; editing it
+  # requires only a container restart, not a full image rebuild.
+  phase4-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.phase4
+    image: wazuh-phase4-api:latest
+    container_name: phase4-api
+    command: uvicorn server:app --host 0.0.0.0 --port 8082 --app-dir /app/phase4
+    volumes:
+      - ./src/wazuh_mcp_server:/app
+    environment:
+      DATABASE_URL: postgresql://phase4_admin:${POSTGRES_PASSWORD:-change_me_in_production}@phase4-postgres:5432/phase4_incidents
+      POSTGRES_HOST: phase4-postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: phase4_incidents
+      POSTGRES_USER: phase4_admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
+      NEO4J_HOST: phase4-neo4j
+      NEO4J_PORT: 7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-phase4_demo_change_me}
+      MLFLOW_TRACKING_URI: http://phase4-mlflow:5000
+      MCP_BASE_URL: http://mcp-security-proxy:8090/mcp,http://host.docker.internal:8090/mcp,http://localhost:8090/mcp
+      MCP_API_KEY: ${MCP_PROXY_API_KEY:-mcp_proxy_local_demo_change_me}
+      CELERY_BROKER_URL: amqp://phase4_user:${RABBITMQ_PASSWORD:-change_me_in_production}@phase4-rabbitmq:5672/phase4
+      PREFECT_API_URL: http://phase4-prefect-server:4200/api
+      MINIO_ENDPOINT: phase4-minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MLFLOW_S3_ENDPOINT_URL: http://phase4-minio:9000
+      # OpenCTI integration — set these when running compose.opencti.yml
+      OPENCTI_URL: ${OPENCTI_URL:-http://opencti-platform:4000}
+      OPENCTI_API_TOKEN: ${OPENCTI_ADMIN_TOKEN:-a1b2c3d4-e5f6-7890-abcd-ef1234567890}
+      OPENCTI_CONNECTOR_IMPORT_STIX2_ID: ${OPENCTI_CONNECTOR_IMPORT_STIX2_ID:-11111111-2222-3333-4444-555555555555}
+      # LLM fallback threshold monitoring (§9.6.10.3)
+      # Warn when engine=deterministic exceeds this % of calls in the rolling window
+      LLM_FALLBACK_THRESHOLD_PCT: ${LLM_FALLBACK_THRESHOLD_PCT:-10}
+      LLM_FALLBACK_WINDOW_SECONDS: ${LLM_FALLBACK_WINDOW_SECONDS:-3600}
+      # Wazuh Indexer — needed for sync-alerts and the background poller
+      PYTHONPATH: /app
+      WAZUH_INDEXER_HOST: ${WAZUH_INDEXER_HOST:-wazuh.indexer}
+      WAZUH_INDEXER_PORT: ${WAZUH_INDEXER_PORT:-9200}
+      WAZUH_INDEXER_USER: ${WAZUH_INDEXER_USER:-admin}
+      WAZUH_INDEXER_PASS: ${WAZUH_INDEXER_PASS:-SecretPassword}
+    ports:
+      - "8082:8082"
+    depends_on:
+      - phase4-postgres
+      - phase4-neo4j
+      - phase4-prefect-server
+      - phase4-rabbitmq
+      - phase4-mlflow
+      - phase4-minio
+    networks:
+      - phase4
+      - default   # allows DNS resolution of wazuh.indexer
+
+volumes:
+  phase4_postgres_data:
+  phase4_minio_data:
+  phase4_neo4j_data:
+  phase4_neo4j_logs:
+  phase4_prefect_data:
+  phase4_rabbitmq_data:
+  phase4_redis_data:
+  phase4_prometheus_data:
+  phase4_grafana_data:
+  phase4_ml_models:
+
+networks:
+  phase4:
+    driver: bridge
+  wazuh-soc:
+    driver: bridge
+  default:
+    name: wazuh-soc_default
+    driver: bridge

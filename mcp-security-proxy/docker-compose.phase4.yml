@@ -1,0 +1,34 @@
+services:
+  mcp-security-proxy:
+    container_name: mcp-security-proxy
+    environment:
+      MCP_PROXY_UPSTREAM_URL: http://wazuh-mcp-server:3000/mcp
+      MCP_PROXY_UPSTREAM_API_KEY: ${MCP_API_KEY:-wazuh_local_demo_change_me}
+      MCP_PROXY_POLICY_FILE: /app/phase4-config/policy.json
+      MCP_PROXY_LLM_RISK_BASE_URL: ${MCP_PROXY_LLM_RISK_BASE_URL:-http://model-runner.docker.internal/engines/v1}
+      MCP_PROXY_LLM_RISK_MODEL: ${MCP_PROXY_LLM_RISK_MODEL:-ai/gemma3-qat:latest}
+      MCP_PROXY_TOOL_INTENT_BASE_URL: ${MCP_PROXY_TOOL_INTENT_BASE_URL:-http://model-runner.docker.internal/engines/v1}
+      MCP_PROXY_TOOL_INTENT_MODEL: ${MCP_PROXY_TOOL_INTENT_MODEL:-ai/gemma3-qat:latest}
+      MCP_PROXY_POLICY_TUNING_LLM_TIMEOUT_SECONDS: ${MCP_PROXY_POLICY_TUNING_LLM_TIMEOUT_SECONDS:-20}
+      MCP_PROXY_TIER: ${MCP_PROXY_TIER:-core}
+      MCP_PROXY_LICENSE_KEY: ${MCP_PROXY_LICENSE_KEY:-}
+      MCP_PROXY_HISTORY_FILE: ${MCP_PROXY_HISTORY_FILE:-/app/data/runtime_history.json}
+      MCP_PROXY_USAGE_COUNTERS_FILE: ${MCP_PROXY_USAGE_COUNTERS_FILE:-/app/data/usage_counters.json}
+    volumes:
+      - ../config/phase4/mcp_proxy:/app/phase4-config
+      - ./data:/app/data
+    networks:
+      default:
+        aliases:
+          - mcp-security-proxy
+      phase4:
+        aliases:
+          - mcp-security-proxy
+
+networks:
+  default:
+    external: true
+    name: wazuh-soc_default
+  phase4:
+    external: true
+    name: wazuh-soc_phase4

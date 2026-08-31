@@ -1,0 +1,34 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: wazuh-mcp-server
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - wazuh-mcp-server:3000
+
+  - job_name: phase4-api
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - phase4-api:8082
+
+  - job_name: mcp-security-proxy
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - mcp-security-proxy:8090
+
+  - job_name: phase4-prefect
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - phase4-prefect-server:4200
+
+  - job_name: phase4-mlflow
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - phase4-mlflow:5000

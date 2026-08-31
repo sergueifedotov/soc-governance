@@ -1,0 +1,40 @@
+Third-party notices
+===================
+
+This repository is original Marifort SOC / agent-governance work on top of a
+fork of the Wazuh MCP Server.
+
+1. Wazuh MCP Server
+   License: MIT
+   Copyright (c) 2024 Wazuh MCP Server Contributors
+   Source: https://github.com/gensecaihq/Wazuh-MCP-Server
+   Fork point: v4.2.1
+   Inherited paths include `src/wazuh_mcp_server/{auth,config,oauth,security,...}.py`,
+   installers, deploy scripts, and the MCP SIEM tool surface. The Python package
+   name `wazuh_mcp_server` is retained so the fork remains import-compatible.
+
+2. AgentGuard (`agentic-ai-firewall/`)
+   License: Apache-2.0 — see `agentic-ai-firewall/LICENSE`
+   Copyright 2026 AgentGuard contributors
+   Do not treat that subtree as MIT-only.
+
+3. d3 (`src/wazuh_mcp_server/phase4/static/d3.min.js`)
+   Copyright 2010-2023 Mike Bostock. Keep the file header notice.
+
+4. OpenCTI
+   This repo does **not** vendor OpenCTI sources. `compose.opencti.yml` pulls
+   published images. See OpenCTI's own licence for those images.
+
+5. Neo4j
+   `compose.phase4.yml` uses Neo4j **Community**. Do not enable Neo4j Enterprise
+   unless you have a licence.
+
+6. Wazuh
+   The demo stack (`compose.full.yml`) uses Wazuh's published Docker images and
+   their documented demo credentials. Those passwords are for local demo only.
+
+Related Marifort repositories (original, no upstream MCP server code):
+
+- https://github.com/marifort/rag-protection — identity ACL on AI retrieval
+- https://github.com/marifort/mcp-security-proxy — standalone extract of
+  `mcp-security-proxy/` in this tree

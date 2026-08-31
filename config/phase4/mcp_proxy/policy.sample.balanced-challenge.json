@@ -1,0 +1,75 @@
+{
+  "allowed_methods": [
+    "initialize",
+    "notifications/initialized",
+    "ping",
+    "tools/list",
+    "tools/call"
+  ],
+  "denied_tools": [
+    "wazuh_block_ip",
+    "wazuh_isolate_host",
+    "wazuh_kill_process",
+    "wazuh_disable_user",
+    "wazuh_quarantine_file",
+    "wazuh_active_response",
+    "wazuh_firewall_drop",
+    "wazuh_host_deny",
+    "wazuh_restart",
+    "wazuh_unisolate_host",
+    "wazuh_enable_user",
+    "wazuh_restore_file",
+    "wazuh_firewall_allow",
+    "wazuh_host_allow"
+  ],
+  "blocked_argument_patterns": [
+    "(?i)\\b(ignore\\s+previous\\s+instructions|system\\s+prompt|tool\\s+override)\\b",
+    "(?i)\\b(drop\\s+table|union\\s+select|insert\\s+into|;\\s*shutdown)\\b",
+    "(?i)(\\.\\./|%2e%2e|\\$\\(|`[^`]+`)",
+    "(?i)\\b(curl|wget|nc|bash\\s+-c|powershell)\\b",
+    "(?i)\\b(exfiltrat(e|es|ing|ion)|harvest.*credential|credential.*harvest|steal.*secret|secret.*theft)\\b",
+    "(?i)\\b(bypass\\s+mfa|account\\s+takeover|persistent\\s+privileged\\s+session)\\b",
+    "(?i)\\b(tamper.*(alert|log|pipeline|siem)|suppress\\s+(siem|log|alert|forward))\\b",
+    "(?i)\\b(backdoor(ed)?\\s+(package|artifact|deploy)|supply.chain\\s+attack)\\b",
+    "(?i)\\b(ransomware|destructive\\s+wipe|mass\\s+encrypt\\s+shared\\s+storage)\\b"
+  ],
+  "blocked_pattern_action": "challenge",
+  "llm_risk": {
+    "enabled": true,
+    "provider": "langchain",
+    "model": "ai/gemma3-qat:latest",
+    "base_url": "http://model-runner.docker.internal/engines/v1",
+    "api_key": "local-demo",
+    "timeout_seconds": 5,
+    "min_monitor_score": 0.5,
+    "min_challenge_score": 0.62,
+    "min_deny_score": 0.72,
+    "enforce": true,
+    "max_argument_chars": 2000,
+    "system_prompt": "You are an MCP security risk classifier. Return only compact JSON with keys: decision_hint, risk_score, labels, rationale. decision_hint must be one of allow, monitor, challenge, deny. risk_score must be 0..1."
+  },
+  "tool_intent": {
+    "enabled": true,
+    "provider": "langchain",
+    "model": "ai/gemma3-qat:latest",
+    "base_url": "http://model-runner.docker.internal/engines/v1",
+    "api_key": "local-demo",
+    "timeout_seconds": 5,
+    "min_monitor_score": 0.3,
+    "min_challenge_score": 0.4,
+    "min_deny_score": 0.62,
+    "enforce": true,
+    "max_argument_chars": 2000,
+    "require_intent_metadata": true,
+    "metadata_intent_keys": [
+      "intent",
+      "declared_intent",
+      "task_intent"
+    ],
+    "system_prompt": "You are an MCP tool-intent verifier. Compare declared intent against selected method/tool/arguments. Return only compact JSON with keys: decision_hint, intent_score, labels, rationale. decision_hint must be one of allow, monitor, challenge, deny. intent_score must be 0..1 where higher means stronger intent mismatch risk."
+  },
+  "max_body_bytes": 262144,
+  "tool_name_regex": "^[a-zA-Z0-9_:-]{1,120}$",
+  "masking_rules": [],
+  "discovery_rules": []
+}

@@ -1,0 +1,7 @@
+{
+  "python.terminal.useEnvFile": true,
+  "isort.importStrategy": "useBundled",
+  "isort.interpreter": [
+    "/Users/sergueifedotov/Wazuh-MCP-Neo4j-OCTI-Mon-6/.venv/bin/python"
+  ]
+}

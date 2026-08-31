@@ -1,0 +1,177 @@
+{
+  "allowed_methods": [
+    "initialize",
+    "notifications/initialized",
+    "ping",
+    "tools/list",
+    "tools/call"
+  ],
+  "denied_tools": [
+    "wazuh_block_ip",
+    "wazuh_isolate_host",
+    "wazuh_kill_process",
+    "wazuh_disable_user",
+    "wazuh_quarantine_file",
+    "wazuh_active_response",
+    "wazuh_firewall_drop",
+    "wazuh_host_deny",
+    "wazuh_restart",
+    "wazuh_unisolate_host",
+    "wazuh_enable_user",
+    "wazuh_restore_file",
+    "wazuh_firewall_allow",
+    "wazuh_host_allow"
+  ],
+  "blocked_argument_patterns": [
+    "(?i)\\b(ignore\\s+previous\\s+instructions|system\\s+prompt|tool\\s+override)\\b",
+    "(?i)\\b(drop\\s+table|union\\s+select|insert\\s+into|;\\s*shutdown)\\b",
+    "(?i)(\\.\\./|%2e%2e|\\$\\(|`[^`]+`)",
+    "(?i)\\b(curl|wget|nc|bash\\s+-c|powershell)\\b",
+    "(?i)\\b(exfiltrat(e|es|ing|ion)|harvest.*credential|credential.*harvest|steal.*secret|secret.*theft)\\b",
+    "(?i)\\b(bypass\\s+mfa|account\\s+takeover|persistent\\s+privileged\\s+session)\\b",
+    "(?i)\\b(tamper.*(alert|log|pipeline|siem)|suppress\\s+(siem|log|alert|forward))\\b",
+    "(?i)\\b(backdoor(ed)?\\s+(package|artifact|deploy)|supply.chain\\s+attack)\\b",
+    "(?i)\\b(ransomware|destructive\\s+wipe|mass\\s+encrypt\\s+shared\\s+storage)\\b"
+  ],
+  "blocked_pattern_action": "challenge",
+  "llm_risk": {
+    "enabled": true,
+    "provider": "langchain",
+    "model": "ai/gemma3-qat:latest",
+    "base_url": "http://model-runner.docker.internal/engines/v1",
+    "api_key": "local-demo",
+    "timeout_seconds": 5,
+    "min_monitor_score": 0.5,
+    "min_challenge_score": 0.62,
+    "min_deny_score": 0.72,
+    "enforce": true,
+    "max_argument_chars": 2000,
+    "system_prompt": "You are an MCP security risk classifier. Return only compact JSON with keys: decision_hint, risk_score, labels, rationale. decision_hint must be one of allow, monitor, challenge, deny. risk_score must be 0..1."
+  },
+  "tool_intent": {
+    "enabled": true,
+    "provider": "langchain",
+    "model": "ai/gemma3-qat:latest",
+    "base_url": "http://model-runner.docker.internal/engines/v1",
+    "api_key": "local-demo",
+    "timeout_seconds": 5,
+    "min_monitor_score": 0.3,
+    "min_challenge_score": 0.4,
+    "min_deny_score": 0.62,
+    "enforce": true,
+    "max_argument_chars": 2000,
+    "require_intent_metadata": true,
+    "metadata_intent_keys": [
+      "intent",
+      "declared_intent",
+      "task_intent"
+    ],
+    "system_prompt": "You are an MCP tool-intent verifier. Compare declared intent against selected method/tool/arguments. Return only compact JSON with keys: decision_hint, intent_score, labels, rationale. decision_hint must be one of allow, monitor, challenge, deny. intent_score must be 0..1 where higher means stronger intent mismatch risk."
+  },
+  "max_body_bytes": 262144,
+  "tool_name_regex": "^[a-zA-Z0-9_:-]{1,120}$",
+  "masking_rules": [],
+  "discovery_rules": [
+    {
+      "signal": "untrusted_server_calls",
+      "action_on_trigger": "monitor"
+    },
+    {
+      "signal": "descriptor_drift_events",
+      "action_on_trigger": "monitor"
+    },
+    {
+      "signal": "execution_tool_attempts",
+      "action_on_trigger": "monitor"
+    }
+  ],
+  "trusted_servers": [
+    "http://wazuh-mcp-server:3000/mcp",
+    "http://wazuh-mcp-server:3000",
+    "wazuh-mcp-server:3000",
+    "http://host.docker.internal:3000/mcp",
+    "http://localhost:3000/mcp"
+  ],
+  "untrusted_server_action": "deny",
+  "tool_descriptor_hashes": {},
+  "descriptor_drift_action": "deny",
+  "execution_tool_profile": {
+    "enabled": true,
+    "action": "deny",
+    "patterns": [
+      "exec",
+      "shell",
+      "run_command",
+      "eval",
+      "subprocess",
+      "python_repl",
+      "bash",
+      "powershell",
+      "ssh"
+    ]
+  },
+  "commercial": {
+    "tier": "enterprise",
+    "license_key": "",
+    "limits": {
+      "max_mcp_calls_per_day": 500000,
+      "max_llm_risk_calls_per_day": 250000,
+      "max_tool_intent_calls_per_day": 250000,
+      "max_denied_events_retained": 10000
+    },
+    "features": {
+      "llm_risk": true,
+      "tool_intent": true,
+      "discovery_advanced": true,
+      "policy_bundles": true,
+      "webhook_export": true
+    },
+    "webhook": {
+      "enabled": false,
+      "url": "",
+      "on_deny": true,
+      "timeout_seconds": 5
+    }
+  },
+  "governance": {
+    "enabled": true,
+    "rbac": {
+      "enabled": true,
+      "api_tokens": [
+        {
+          "token": "mcp_proxy_operator_demo_change_me",
+          "role": "operator",
+          "subject": "operator-demo"
+        },
+        {
+          "token": "mcp_proxy_auditor_demo_change_me",
+          "role": "auditor",
+          "subject": "auditor-demo"
+        }
+      ]
+    },
+    "policy_lifecycle": {
+      "enabled": true,
+      "require_approval_for_writes": true,
+      "max_versions": 50,
+      "auto_version_on_write": true
+    },
+    "signing": {
+      "enabled": true,
+      "require_signature_on_apply": false,
+      "signing_key": "sprint4-demo-signing-key-change-me",
+      "algorithm": "hmac-sha256"
+    },
+    "audit_chain": {
+      "enabled": true
+    },
+    "oidc": {
+      "enabled": true,
+      "issuer": "https://idp.example.com/",
+      "audience": "mcp-security-proxy",
+      "jwt_secret": "sprint4-demo-oidc-jwt-secret-change-me",
+      "role_claim": "role",
+      "subject_claim": "sub"
+    }
+  }
+}

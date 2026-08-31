@@ -1,0 +1,111 @@
+{
+  "uid": "mcp-security-proxy-llm-risk-events",
+  "title": "MCP Proxy llm_risk Event Fields",
+  "tags": ["mcp", "security", "proxy", "llm", "risk"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Recent llm_risk Event Fields",
+      "description": "Events are sourced from /recent-denied. Filter the reason column for llm_risk_* when needed.",
+      "gridPos": {"h": 18, "w": 24, "x": 0, "y": 0},
+      "datasource": {"type": "yesoreyeram-infinity-datasource", "uid": "mcp-proxy-json"},
+      "targets": [
+        {
+          "refId": "A",
+          "source": "url",
+          "url": "/recent-denied?limit=200",
+          "url_options": {"method": "GET", "data": ""},
+          "format": "table",
+          "type": "json",
+          "root_selector": "events",
+          "columns": [
+            {"selector": "timestamp", "text": "timestamp", "type": "string"},
+            {"selector": "tool", "text": "tool", "type": "string"},
+            {"selector": "reason", "text": "reason", "type": "string"},
+            {"selector": "metadata.decision_hint", "text": "decision_hint", "type": "string"},
+            {"selector": "metadata.risk_score", "text": "risk_score", "type": "number"},
+            {"selector": "metadata.labels", "text": "labels", "type": "string"},
+            {"selector": "metadata.rationale", "text": "rationale", "type": "string"},
+            {"selector": "request_id", "text": "request_id", "type": "string"},
+            {"selector": "client_ip", "text": "client_ip", "type": "string"}
+          ]
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "footer": {"show": false}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {"type": "auto"},
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "timestamp"},
+            "properties": [
+              {"id": "custom.width", "value": 180}
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "reason"},
+            "properties": [
+              {"id": "custom.width", "value": 220}
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "labels"},
+            "properties": [
+              {"id": "custom.width", "value": 260}
+            ]
+          },
+          {
+            "matcher": {"id": "byName", "options": "rationale"},
+            "properties": [
+              {"id": "custom.width", "value": 480}
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "llm_risk Decisions by Hint",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 18},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "sum by (decision_hint) (rate(mcp_security_proxy_llm_risk_calls_total[1m]))",
+          "legendFormat": "{{decision_hint}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"drawStyle": "bars", "fillOpacity": 60}}}
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "llm_risk Score by Hint (avg)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 18},
+      "datasource": {"type": "prometheus", "uid": "prometheus-ds"},
+      "targets": [
+        {
+          "expr": "avg by (decision_hint) (rate(mcp_security_proxy_llm_risk_score_sum[5m]) / clamp_min(rate(mcp_security_proxy_llm_risk_score_count[5m]), 0.0001))",
+          "legendFormat": "{{decision_hint}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "none", "decimals": 3}}
+    }
+  ]
+}
