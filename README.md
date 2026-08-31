@@ -16,8 +16,8 @@ It is **not** a from-scratch MCP SIEM server. The tool surface is a fork of
 Everything listed under Original work below is Marifort's.
 
 Related: [Marifort Gate](https://github.com/marifort/rag-protection) governs what an AI may **read**.
-The [MCP security proxy](https://github.com/marifort/mcp-security-proxy) is the standalone extract of
-the tool-call gateway in this tree. This repo is the full SOC stack those two sit in.
+The MCP tool-call gateway lives in-tree at [`mcp-security-proxy/`](mcp-security-proxy/). This repo is
+the full SOC stack around that gateway.
 
 ```text
 MCP client (agent / LLM)
@@ -88,7 +88,7 @@ pip install -r requirements.txt
 uvicorn mcp_security_proxy.app:app --port 8090
 ```
 
-Or clone the focused extract: https://github.com/marifort/mcp-security-proxy
+Or run the gateway from this tree (`mcp-security-proxy/`) as above.
 
 ## Tests
 
