@@ -103,7 +103,7 @@ cd mcp-security-proxy && pip install -r requirements.txt -r requirements-dev.txt
 
 ## Licence
 
-**MIT** — Copyright (c) 2026 **Marifort Systems Inc.** and Copyright (c) 2024 **Wazuh MCP Server
+**MIT** — Copyright (c) 2026 **Serguei Fedotov** and Copyright (c) 2024 **Wazuh MCP Server
 Contributors**. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 `agentic-ai-firewall/` remains **Apache-2.0**.

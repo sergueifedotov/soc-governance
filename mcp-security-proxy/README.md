@@ -101,4 +101,4 @@ layers, plus the SIEM workflow around them.
 
 ## License
 
-MIT — Copyright (c) 2026 [Marifort Systems Inc.](https://github.com/marifort)
+MIT — Copyright (c) 2026 [Serguei Fedotov](https://github.com/sergueifedotov)

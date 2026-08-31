@@ -9,7 +9,7 @@ description = "Marifort SOC governance — MCP tool policy, human-gated SIEM res
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Marifort Systems Inc.", email = "support@marifort.com"}
+    {name = "Serguei Fedotov"}
 ]
 keywords = ["wazuh", "security", "mcp", "sse", "siem", "remote-server"]
 classifiers = [
