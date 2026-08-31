@@ -1,4 +1,9 @@
 <p align="center">
+  <a href="https://github.com/marifort">
+    <img src="docs/marifort-company-badge.png" alt="Marifort" width="128" height="128" />
+  </a>
+</p>
+<p align="center">
   <strong>Marifort SOC Governance</strong>
 </p>
 
