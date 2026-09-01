@@ -216,6 +216,10 @@ class MCPToolClient:
                 "Defensive SOC enrichment of recent high-severity Wazuh alerts for analyst triage, correlation, "
                 "and incident response"
             )
+        elif tool_name == "get_wazuh_alerts":
+            declared_intent = (
+                "Review recent high-severity Wazuh detections for SOC analyst triage and investigation context"
+            )
         else:
             declared_intent = f"Phase 4 request to run MCP tool {tool_name}"
         payload = {
@@ -238,7 +242,7 @@ class MCPToolClient:
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
-        last_error = ""
+        errors: List[str] = []
         for base_url in self.base_urls:
             request = urllib_request.Request(
                 base_url,
@@ -266,18 +270,26 @@ class MCPToolClient:
                     raw_error = exc.read().decode("utf-8")
                     parsed = json.loads(raw_error)
                     error_obj = parsed.get("error") or {}
-                    detail = str(error_obj.get("data", {}).get("reason") or error_obj.get("message") or raw_error)
+                    detail = str(
+                        (error_obj.get("data") or {}).get("reason")
+                        or error_obj.get("message")
+                        or parsed.get("detail")
+                        or raw_error
+                    )
                 except Exception:
                     detail = str(exc)
                 last_error = f"{base_url}: HTTP {exc.code} {exc.reason}"
                 if detail:
                     last_error = f"{last_error} - {detail[:500]}"
+                errors.append(last_error)
                 logger.warning("MCP request failed (%s)", last_error)
             except (urllib_error.URLError, RuntimeError, ValueError) as exc:
                 last_error = f"{base_url}: {exc}"
+                errors.append(last_error)
                 logger.warning("MCP request failed (%s)", last_error)
 
-        raise RuntimeError(f"All MCP endpoints failed for {tool_name}: {last_error}")
+        joined = " | ".join(errors) if errors else "no endpoints configured"
+        raise RuntimeError(f"All MCP endpoints failed for {tool_name}: {joined}")
 
 
 def _generate_policy_recommendations(

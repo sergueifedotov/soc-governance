@@ -14,6 +14,8 @@ At the end of this demo you should have:
 
 - Docker Desktop with Docker Model Runner enabled
 - The stack profile that includes AgentGuard (Profile C)
+- A valid `wazuh_` `MCP_API_KEY` in repo `.env` (not `CHANGE_ME`) — see
+  [OPERATIONS.md](OPERATIONS.md#first-run-local-stack)
 - `jq` installed
 
 ## 2-Minute Live Demo (5 Commands)

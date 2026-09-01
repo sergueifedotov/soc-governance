@@ -66,6 +66,12 @@ cp .env.example .env      # set MCP_PROXY_UPSTREAM_URL and the API keys
 docker compose up --build
 ```
 
+For the full SOC stack (Wazuh + Phase 4 Alerts), use repo-root
+`bash tools/start-profile.sh C` after setting a valid `wazuh_` `MCP_API_KEY` in the
+**repo** `.env`. See [../docs/OPERATIONS.md](../docs/OPERATIONS.md#first-run-local-stack).
+The proxy compose project does not load that file unless the profile wrapper (or
+`--env-file`) passes it.
+
 ## Configuration
 
 | Variable | Default | Purpose |
@@ -93,7 +99,7 @@ actions — block an IP, isolate a host, kill a process, quarantine a file — a
 made per-call authorization the interesting problem. The proxy contains no upstream code and works in
 front of any MCP server.
 
-Related: [Marifort Gate](https://github.com/marifort/rag-protection) enforces identity-based document
+Related: [rag-protection](https://github.com/marifort/rag-protection) enforces identity-based document
 authorization on AI *retrieval*. This proxy governs AI *actions*. The full SOC stack this proxy was
 extracted from is [soc-governance](https://github.com/sergueifedotov/soc-governance) (Phase 2–4, LangGraph
 approval gate, Neo4j/OpenCTI). Same pattern — identity and policy, decision, audit trail — at two

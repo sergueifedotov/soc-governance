@@ -149,6 +149,59 @@ docker compose -f compose.full.yml up -d --build wazuh-mcp-server wazuh.manager 
 
 Common issues and their solutions.
 
+## Phase 4 Alerts tab fails with connection refused or Invalid or expired token
+
+**Symptom:**
+
+SOC UI **Alerts** → **Fetch Alerts** shows a red banner such as:
+
+```text
+Failed to fetch alerts: All MCP endpoints failed for get_wazuh_alerts:
+http://localhost:8090/mcp: <urlopen error [Errno 111] Connection refused>
+```
+
+or `401` / `Invalid or expired token` on `http://mcp-security-proxy:8090/mcp`.
+
+**Cause:**
+
+Phase 4 (`phase4-api`) calls the MCP proxy, which forwards to `wazuh-mcp-server`. Two separate
+problems get collapsed into that last URL:
+
+1. `.env` still has `MCP_API_KEY=CHANGE_ME` (or any value that is not `wazuh_<43-char-base64>`).
+   Wazuh MCP ignores it and the proxy's upstream bearer does not match.
+2. `localhost:8090` from **inside** `phase4-api` is not the proxy. That fallback always
+   connection-refuses. The useful error is the earlier 401 on `mcp-security-proxy:8090`.
+
+**How to Fix:**
+
+1. Put a valid key in repo `.env` and recreate Wazuh MCP:
+
+   ```bash
+   python3 -c "import secrets; print('wazuh_' + secrets.token_urlsafe(32))"
+   # set MCP_API_KEY= in .env to that value
+   docker compose -f compose.full.yml -f compose.phase3.langgraph.yml \
+     -f compose.phase4.yml -f compose.opencti.yml \
+     up -d --force-recreate --no-deps wazuh-mcp-server
+   ```
+
+2. Point the proxy upstream key at the running Wazuh key (keeps the Phase 4 client bearer):
+
+   ```bash
+   bash tools/align_mcp_proxy_upstream_key.sh
+   ```
+
+3. Confirm:
+
+   ```bash
+   curl -sS -X POST http://localhost:8082/alerts/fetch \
+     -H 'Content-Type: application/json' \
+     -d '{"time_range":"24h","level":"5+","limit":5}'
+   ```
+
+First-run checklist: [OPERATIONS.md](OPERATIONS.md#first-run-local-stack).
+
+---
+
 ## Smoke Test Fails with `playbook.execute.status=failed`
 
 **Symptom:**

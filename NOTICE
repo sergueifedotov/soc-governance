@@ -1,8 +1,8 @@
 Third-party notices
 ===================
 
-This repository is original Marifort SOC / agent-governance work on top of a
-fork of the Wazuh MCP Server.
+This repository is original SOC / agent-governance work by Serguei Fedotov on
+top of a fork of the Wazuh MCP Server.
 
 1. Wazuh MCP Server
    License: MIT
@@ -33,7 +33,7 @@ fork of the Wazuh MCP Server.
    The demo stack (`compose.full.yml`) uses Wazuh's published Docker images and
    their documented demo credentials. Those passwords are for local demo only.
 
-Related Marifort repositories (original, no upstream MCP server code):
+Related repositories (original, no upstream MCP server code):
 
 - https://github.com/marifort/rag-protection — identity ACL on AI retrieval
 - https://github.com/sergueifedotov/mcp-security-proxy — standalone extract of

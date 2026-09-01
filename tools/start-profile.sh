@@ -48,7 +48,22 @@ start_mcp_proxy_stack() {
     -f mcp-security-proxy/docker-compose.phase4.yml
     -f mcp-security-proxy/docker-compose.isolated-executor.yml
   )
-  docker compose "${mcp_compose[@]}" up -d ${build_flag}
+  local compose_env=()
+  if [[ -f "${REPO_ROOT}/.env" ]]; then
+    compose_env+=(--env-file "${REPO_ROOT}/.env")
+  fi
+  # Proxy compose files live under mcp-security-proxy/, so they would not
+  # otherwise inherit repo-root MCP_API_KEY. Prefer the running Wazuh key
+  # so MCP_PROXY_UPSTREAM_API_KEY matches wazuh-mcp-server.
+  local wazuh_key=""
+  wazuh_key="$(docker exec wazuh-mcp-server printenv MCP_API_KEY 2>/dev/null || true)"
+  if [[ -n "${wazuh_key}" ]]; then
+    export MCP_API_KEY="${wazuh_key}"
+  fi
+  if [[ -n "${MCP_API_KEY:-}" && "${MCP_API_KEY}" != wazuh_* ]]; then
+    echo "WARN: MCP_API_KEY is not wazuh_<token> format. wazuh-mcp-server will ignore it and Fetch Alerts will 401." >&2
+  fi
+  docker compose "${compose_env[@]}" "${mcp_compose[@]}" up -d ${build_flag}
 }
 
 preflight_docker() {

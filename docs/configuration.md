@@ -505,6 +505,18 @@ Configure via `AUTH_MODE` environment variable:
 - Claude Desktop connects seamlessly via DCR
 
 **Bearer Mode (`AUTH_MODE=bearer`):**
+
+Local compose uses the raw `MCP_API_KEY` value as the Bearer token (Open WebUI, MCP
+proxy upstream). The key **must** be `wazuh_` plus 43 URL-safe characters:
+
+```bash
+python3 -c "import secrets; print('wazuh_' + secrets.token_urlsafe(32))"
+```
+
+`CHANGE_ME` is rejected at startup. First-run: [OPERATIONS.md](OPERATIONS.md#first-run-local-stack).
+
+You can also mint a JWT from that API key:
+
 ```bash
 # Get JWT token
 curl -X POST https://your-server.com/auth/token \

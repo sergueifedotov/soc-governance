@@ -192,9 +192,21 @@ The proxy uses **two** credentials:
 | `MCP_PROXY_UPSTREAM_API_KEY` | Proxy → Wazuh MCP | Upstream `tools/list` / `tools/call` |
 
 If they diverge, admin calls succeed but Sprint 1 **descriptor drift** fails with
-`{"detail":"Invalid or expired token"}` on `tools/list`.
+`{"detail":"Invalid or expired token"}` on `tools/list`. The same 401 breaks Phase 4
+**Fetch Alerts** (`POST /alerts/fetch`).
 
-**Align keys:**
+`MCP_API_KEY` in repo `.env` **must** be `wazuh_` + 43 URL-safe characters. The
+placeholder `CHANGE_ME` is ignored by Wazuh MCP.
+
+**Start (Profile C already passes repo `.env` into the proxy stack):**
+
+```bash
+bash tools/start-profile.sh C
+```
+
+**If upstream still 401s, align keys** (sets `MCP_PROXY_UPSTREAM_API_KEY` from
+`wazuh-mcp-server`; keeps the existing `MCP_PROXY_API_KEY` client bearer so Phase 4
+does not break):
 
 ```bash
 bash tools/align_mcp_proxy_upstream_key.sh
@@ -207,8 +219,10 @@ docker exec mcp-security-proxy printenv MCP_PROXY_UPSTREAM_API_KEY
 docker exec wazuh-mcp-server printenv MCP_API_KEY
 ```
 
-**Durable fix:** set `MCP_API_KEY` in repo `.env` **before** `start-profile.sh C` so
-both services receive the same value at container create time.
+**Durable fix:** set a valid `wazuh_` `MCP_API_KEY` in repo `.env` **before**
+`start-profile.sh C`. The wrapper passes that file into the proxy compose project
+(which would otherwise not see repo-root `.env`) and copies the running Wazuh key
+into `MCP_PROXY_UPSTREAM_API_KEY`.
 
 Resolve proxy bearer for manual curls:
 

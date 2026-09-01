@@ -2,7 +2,7 @@
 
 > This file is the inherited product README from
 > [gensecaihq/Wazuh-MCP-Server](https://github.com/gensecaihq/Wazuh-MCP-Server) v4.2.1, kept as
-> operational documentation for the SIEM tool surface. The Marifort front door is
+> operational documentation for the SIEM tool surface. The project front door is
 > [README.md](../README.md). Licence: MIT, dual copyright — see [LICENSE](../LICENSE) and
 > [NOTICE](../NOTICE).
 

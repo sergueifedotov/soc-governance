@@ -21,6 +21,10 @@ MCP proxy feature status and packaging references:
 
 ## Quick Reference: Common Deployments
 
+**Recommended laptop bring-up** (Wazuh + MCP proxy + Phase 3/4 + OpenCTI): generate a
+valid `wazuh_` `MCP_API_KEY` in `.env`, then `bash tools/start-profile.sh C`. See
+[OPERATIONS.md](OPERATIONS.md#first-run-local-stack) and the [README](../README.md#quick-start-local-soc-stack).
+
 ### Stage 1: Remote MCP Server (Production)
 ```bash
 # Minimal deployment - just the MCP server standalone

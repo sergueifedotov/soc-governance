@@ -116,13 +116,15 @@ Production policy: `bash tools/switch_mcp_policy_sample.sh sprint-3-a3-deny`
 
 | Step | Command / check |
 |------|------------------|
-| Align upstream + client bearer | `bash tools/align_mcp_proxy_upstream_key.sh` |
+| Align upstream key (preserve client bearer) | `bash tools/align_mcp_proxy_upstream_key.sh` |
 | Verify hygiene | `bash tools/test_mcp_proxy_phase_a4.sh` |
 | Rebuild after code changes | `bash tools/apply_mcp_proxy_phase_a4.sh --rebuild-proxy` |
 | Health | `curl -s http://localhost:8090/health \| jq` |
 
-Set `MCP_API_KEY` and `MCP_PROXY_API_KEY` in repo `.env` **before**
-`bash tools/start-profile.sh C` so proxy and Wazuh share the same key at container create time.
+Set a valid `wazuh_` `MCP_API_KEY` in repo `.env` **before**
+`bash tools/start-profile.sh C`. The wrapper injects that key as
+`MCP_PROXY_UPSTREAM_API_KEY`. `MCP_PROXY_API_KEY` stays the client bearer
+(default `mcp_proxy_local_demo_change_me` unless set).
 
 ### A5. Validate after operational changes
 

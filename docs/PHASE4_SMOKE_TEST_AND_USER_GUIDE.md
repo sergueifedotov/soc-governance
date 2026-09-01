@@ -205,7 +205,20 @@ This gives fast confidence that:
 
 ## Prerequisites
 
+- Local stack is up via Profile C (recommended) or equivalent compose overlays.
+  First-run key + start steps: [OPERATIONS.md](OPERATIONS.md#first-run-local-stack).
+
+  ```bash
+  cp .env.example .env
+  python3 -c "import secrets; print('wazuh_' + secrets.token_urlsafe(32))"
+  # paste into MCP_API_KEY= in .env (must be wazuh_<43-char>, not CHANGE_ME)
+  bash tools/start-profile.sh C
+  ```
+
 - Phase 4 API is running on `http://localhost:8082` (or your custom URL).
+- SOC UI: `http://localhost:8082/ui` — **Alerts** → **Fetch Alerts** should return rows
+  (or `POST /alerts/fetch` should return HTTP 200). If it 401s, run
+  `bash tools/align_mcp_proxy_upstream_key.sh`.
 - Shell has `curl` and `python3` installed.
 - Script has execute permission.
 
@@ -432,6 +445,21 @@ Operational note:
 
 - Start with `dry_run=true` to validate filters and mapping.
 - Switch to `dry_run=false` when ready to persist incidents.
+
+### Browse live alerts in the SOC UI (no incident write)
+
+The **Alerts** tab calls `POST /alerts/fetch`, which uses the MCP tool `get_wazuh_alerts`
+through the security proxy.
+
+```bash
+curl -sS -X POST http://localhost:8082/alerts/fetch \
+  -H 'Content-Type: application/json' \
+  -d '{"time_range":"24h","level":"5+","limit":50}'
+```
+
+If this fails with `Invalid or expired token` or a later `localhost:8090` connection
+refused, fix keys first ([TROUBLESHOOTING.md](TROUBLESHOOTING.md#phase-4-alerts-tab-fails-with-connection-refused-or-invalid-or-expired-token))
+before ingesting into incidents.
 
 ---
 

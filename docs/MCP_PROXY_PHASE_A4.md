@@ -15,7 +15,7 @@ Related:
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| Align script (enhanced) | `tools/align_mcp_proxy_upstream_key.sh` | Sets **both** `MCP_PROXY_UPSTREAM_API_KEY` and `MCP_PROXY_API_KEY` from wazuh |
+| Align script (enhanced) | `tools/align_mcp_proxy_upstream_key.sh` | Sets `MCP_PROXY_UPSTREAM_API_KEY` from wazuh; **keeps** existing `MCP_PROXY_API_KEY` |
 | Apply script | `tools/apply_mcp_proxy_phase_a4.sh` | Align + verify hygiene |
 | Test script | `tools/test_mcp_proxy_phase_a4.sh` | Key report, health, ping, `tools/list` |
 | Key report helper | `tools/mcp_proxy_test_common.sh` → `mcp_test_print_key_report` | JSON summary of key sources |
@@ -30,7 +30,12 @@ Related:
 | `MCP_PROXY_UPSTREAM_API_KEY` | `mcp-security-proxy` | Bearer sent **to** Wazuh when proxy forwards |
 | `MCP_PROXY_API_KEY` | `mcp-security-proxy` | Bearer **clients** use for `/mcp` and `/admin/*` |
 
-**A4 goal:** `MCP_PROXY_UPSTREAM_API_KEY` and `MCP_PROXY_API_KEY` both equal `wazuh-mcp-server` `MCP_API_KEY` after align.
+**A4 goal:** `MCP_PROXY_UPSTREAM_API_KEY` equals `wazuh-mcp-server` `MCP_API_KEY` after
+start or align. `MCP_PROXY_API_KEY` is the client bearer (Phase 4 default
+`mcp_proxy_local_demo_change_me`); align no longer overwrites it.
+
+First-run: generate a valid `wazuh_` `MCP_API_KEY` in `.env`, then
+`bash tools/start-profile.sh C`. See [OPERATIONS.md](OPERATIONS.md#first-run-local-stack).
 
 Compose wiring (`mcp-security-proxy/docker-compose.yml`):
 
@@ -73,13 +78,16 @@ bash tools/apply_mcp_proxy_phase_a4.sh --rebuild-proxy
 ## Before first Profile C start (greenfield)
 
 1. Copy `.env.example` → `.env` (if needed).
-2. Set a strong shared key:
+2. Set a valid Wazuh MCP key (`wazuh_` + 43 URL-safe chars — not `CHANGE_ME`):
 
 ```bash
-# In repo .env (do not commit real secrets to git)
-MCP_API_KEY=your-shared-key
-MCP_PROXY_API_KEY=${MCP_API_KEY}
+python3 -c "import secrets; print('wazuh_' + secrets.token_urlsafe(32))"
+# In repo .env (do not commit real secrets to git):
+# MCP_API_KEY=<printed value>
 ```
+
+Leave `MCP_PROXY_API_KEY` unset unless you also recreate `phase4-api` with the same
+value. The Phase 4 default client bearer is `mcp_proxy_local_demo_change_me`.
 
 3. Start Profile C:
 

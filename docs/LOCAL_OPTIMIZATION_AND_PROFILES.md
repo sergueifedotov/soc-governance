@@ -164,6 +164,10 @@ Implemented flags:
 
 Operational notes:
 
+- **First run:** copy `.env.example` to `.env` and set `MCP_API_KEY` to
+  `wazuh_` + `secrets.token_urlsafe(32)` **before** `start-profile.sh`. `CHANGE_ME` is
+  rejected and breaks Phase 4 **Fetch Alerts**. Details:
+  [OPERATIONS.md](OPERATIONS.md#first-run-local-stack).
 - Profiles B and D look for an optional future autonomous overlay file named
   `compose.autonomous-hunt.yml` or `compose.autonomous.yml`.
 - If no autonomous overlay exists yet, B and D still start the currently

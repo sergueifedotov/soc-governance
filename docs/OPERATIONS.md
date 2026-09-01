@@ -2,6 +2,90 @@
 
 Day-to-day operations and maintenance tasks.
 
+Product behaviour, source map, and layer summary:
+[OVERVIEW.md](OVERVIEW.md).
+
+## First-run local stack
+
+Recommended path for a laptop demo (Wazuh + MCP + proxy + Phase 3/4 + OpenCTI):
+
+```bash
+cp .env.example .env
+python3 -c "import secrets; print('wazuh_' + secrets.token_urlsafe(32))"
+# Paste into MCP_API_KEY= in .env  (must be wazuh_<43-char-base64>, 49 chars total)
+
+bash tools/start-profile.sh C
+```
+
+Use `bash tools/start-profile.sh C --no-build` on later boots. Profiles A–D:
+[LOCAL_OPTIMIZATION_AND_PROFILES.md](LOCAL_OPTIMIZATION_AND_PROFILES.md).
+
+### MCP API key (required before start)
+
+Wazuh MCP only loads `MCP_API_KEY` when it matches `wazuh_` + 43 URL-safe characters.
+`.env.example` ships `CHANGE_ME`, which is **rejected**. The server then auto-generates a
+key that is not written back to `.env`, so the MCP proxy and Phase 4 Alerts tab get
+`401 Invalid or expired token`.
+
+Generate a stable key **before** the first `start-profile.sh` (or recreate
+`wazuh-mcp-server` after changing `.env`).
+
+`start-profile.sh` passes repo-root `.env` into the standalone MCP proxy compose project
+(those files live under `mcp-security-proxy/` and would otherwise miss the key) and sets
+`MCP_PROXY_UPSTREAM_API_KEY` from the running `wazuh-mcp-server` container.
+
+Two different bearers:
+
+| Variable | Who uses it | Default if unset |
+|---|---|---|
+| `MCP_API_KEY` | Proxy → Wazuh (`MCP_PROXY_UPSTREAM_API_KEY`) | must be a valid `wazuh_` key in `.env` |
+| `MCP_PROXY_API_KEY` | Phase 4 / operate UI → proxy `:8090` | `mcp_proxy_local_demo_change_me` |
+
+If Alerts or `tools/list` still 401 after start:
+
+```bash
+bash tools/align_mcp_proxy_upstream_key.sh
+```
+
+That script recreates the proxy so the **upstream** key matches Wazuh. It keeps the existing
+**client** bearer so Phase 4 does not start failing with a different 401.
+
+### Confirm Alerts
+
+Wait until `wazuh-mcp-server` is healthy (indexer is often ~2 minutes on first boot), then:
+
+```bash
+curl -sS -X POST http://localhost:8082/alerts/fetch \
+  -H 'Content-Type: application/json' \
+  -d '{"time_range":"24h","level":"5+","limit":5}'
+```
+
+Or open http://localhost:8082/ui → **Alerts** → **Fetch Alerts**.
+
+A UI error that only shows `http://localhost:8090/mcp: Connection refused` is the last
+fallback inside the `phase4-api` container. `docker logs phase4-api` usually shows 401 on
+`http://mcp-security-proxy:8090/mcp` first. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md#phase-4-alerts-tab-fails-with-connection-refused-or-invalid-or-expired-token).
+
+### URLs after Profile C
+
+| URL | Service |
+|---|---|
+| http://localhost:8082/ui | Phase 4 SOC UI |
+| http://localhost:8082/docs | Phase 4 OpenAPI |
+| http://localhost:8090/ui | MCP proxy operate UI |
+| http://localhost:3000/mcp | Wazuh MCP server |
+| http://localhost:3100 | Open WebUI |
+| https://localhost:8443 | Wazuh Dashboard (self-signed) |
+| http://localhost:8081 | Phase 3 LangGraph API |
+| http://localhost:8083 | OpenCTI UI |
+| http://localhost:8088 | AgentGuard |
+| http://localhost:3002 | Grafana |
+| http://localhost:9091 | Prometheus |
+| http://localhost:4200 | Prefect |
+| http://localhost:5001 | MLflow |
+
+---
+
 ## Docker Compose Operations
 
 ### Deployment
@@ -92,20 +176,22 @@ docker compose \
 | `compose.langfuse.oss.yml` | Tracing | `langfuse-web`, `langfuse-worker`, `langfuse-postgres`, `langfuse-clickhouse`, `langfuse-redis`, `langfuse-minio` |
 | `compose.opencti.yml` | Threat intel (optional) | `opencti-platform`, `opencti-worker`, `opencti-connector-import-stix2`, `opencti-elasticsearch`, `opencti-redis` — reuses `phase4-rabbitmq` + `phase4-minio`. See [OpenCTI Integration](OPENCTI_INTEGRATION.md). |
 
-**Exposed ports:**
+**Exposed host ports (Profile C / compose overlays):**
 
 | Port | Service |
 |---|---|
-| `:443` | Wazuh Dashboard |
+| `:8443` | Wazuh Dashboard (HTTPS, self-signed) |
 | `:3000` | Wazuh MCP Server |
 | `:3001` | Langfuse UI (`local-admin@example.com` / `local-admin-password`) |
-| `:8080` | Open WebUI |
+| `:3100` | Open WebUI (container listens on 8080) |
 | `:8081` | Phase 3 LangGraph API |
-| `:8000` | Phase 4 API |
-| `:3030` | Prefect UI |
-| `:5050` | MLflow UI |
-| `:9090` | Prometheus |
-| `:9091` | Grafana |
+| `:8082` | Phase 4 API + SOC UI (`/ui`) |
+| `:8090` | MCP security proxy (`/mcp`, `/ui`) |
+| `:8088` | AgentGuard |
+| `:4200` | Prefect UI |
+| `:5001` | MLflow UI |
+| `:9091` | Prometheus |
+| `:3002` | Grafana |
 | `:8083` | OpenCTI UI (when `compose.opencti.yml` is included) |
 
 > **Note:** On first startup, Wazuh generates TLS certificates and the indexer needs ~2 minutes to become ready. The `--build` flag is required to bake the Langfuse env vars into the `phase3-langgraph` image. If you do not need Langfuse tracing, omit `-f compose.langfuse.oss.yml`, the three `export` lines, and `--build`.
@@ -147,7 +233,7 @@ Sprint trust/containment/execution verification (E2E, no profile restart) is doc
 
 ```bash
 bash tools/start-profile.sh C
-bash tools/align_mcp_proxy_upstream_key.sh    # when tools/list returns Invalid or expired token
+bash tools/align_mcp_proxy_upstream_key.sh    # if tools/list or Fetch Alerts still 401 after start
 bash tools/smoke_mcp_proxy.sh --with-isolated-executor   # feature regression (Sprints 1–3; not Phase B) — docs/MCP_PROXY_SMOKE_TEST.md
 bash tools/test_mcp_proxy_phase_b.sh        # Phase B: presets, metering, audit export
 # Or run sprints individually:

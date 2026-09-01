@@ -125,11 +125,12 @@ Production sample: **`sprint-3-a3-deny`** (lab: sandbox attestation off so live 
 
 | Item | Location |
 |------|----------|
-| Align script | `tools/align_mcp_proxy_upstream_key.sh` (upstream + **client** bearer) |
+| Align script | `tools/align_mcp_proxy_upstream_key.sh` (upstream key; preserves client bearer) |
 | Apply / test | `apply_mcp_proxy_phase_a4.sh`, `test_mcp_proxy_phase_a4.sh` |
 | Key report | `mcp_test_print_key_report` in `mcp_proxy_test_common.sh` |
 
-Aligns `MCP_PROXY_UPSTREAM_API_KEY` and `MCP_PROXY_API_KEY` with `wazuh-mcp-server` `MCP_API_KEY`.
+Aligns `MCP_PROXY_UPSTREAM_API_KEY` with `wazuh-mcp-server` `MCP_API_KEY`. Leaves
+`MCP_PROXY_API_KEY` unchanged so Phase 4 / the operate UI keep the same client bearer.
 
 ### A5 — Regression validation
 

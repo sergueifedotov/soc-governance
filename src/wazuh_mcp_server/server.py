@@ -184,17 +184,17 @@ async def lifespan(app: FastAPI):
         logger.warning("⚠️  Running in AUTHLESS mode - no authentication required!")
     elif cfg.is_bearer:
         logger.info("🔐 Bearer token authentication enabled")
-        # Display auto-generated API key if not configured via environment
-        if not os.getenv("MCP_API_KEY"):
-            from wazuh_mcp_server.auth import auth_manager
+        # Display auto-generated API key when MCP_API_KEY is missing or invalid
+        from wazuh_mcp_server.auth import auth_manager
 
-            default_key = auth_manager.get_default_api_key()
-            if default_key:
-                logger.info("=" * 60)
-                logger.info("🔑 AUTO-GENERATED API KEY (save this for client auth):")
-                logger.info(f"   {default_key}")
-                logger.info("   Set MCP_API_KEY environment variable in production")
-                logger.info("=" * 60)
+        default_key = auth_manager.get_default_api_key()
+        if default_key:
+            logger.info("=" * 60)
+            logger.info("🔑 AUTO-GENERATED API KEY (save this for client auth):")
+            logger.info(f"   {default_key}")
+            logger.info("   MCP_API_KEY was missing or not wazuh_<43-char-base64>; this generated key is the one that works.")
+            logger.info("   Set MCP_API_KEY in .env to a valid wazuh_ key to make this stable across restarts.")
+            logger.info("=" * 60)
 
     # Start background session cleanup task (runs every 5 minutes regardless of traffic)
     async def _background_session_cleanup():
